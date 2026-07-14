@@ -205,19 +205,25 @@ class App:
 
     def prompt_search(self) -> None:
         curses.echo()
+        curses.curs_set(1)
+        self.stdscr.timeout(-1)
         height, width = self.stdscr.getmaxyx()
         self.stdscr.addstr(height - 1, 0, "Search: " + " " * (width - 9))
+        if self.query:
+            draw_text(self.stdscr, height - 1, 8, self.query, width - 9)
         self.stdscr.refresh()
         try:
             value = self.stdscr.getstr(height - 1, 8, width - 9).decode()
             self.query = value.strip()
             self.book_index = 0
             self.book_scroll = 0
+            self.message = "Search updated" if self.query else "Search cleared"
         except curses.error:
-            pass
+            self.message = "Search unchanged"
         finally:
             curses.noecho()
-        self.message = "Search updated"
+            curses.curs_set(0)
+            self.stdscr.timeout(250)
 
     def open_selected(self) -> None:
         visible = self.visible_books()
