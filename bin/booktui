@@ -183,6 +183,7 @@ class App:
         self.books: list[Book] = []
         self.categories: list[str] = ["All"]
         self.category_index = 0
+        self.category_scroll = 0
         self.book_index = 0
         self.book_scroll = 0
         self.focus = "books"
@@ -204,6 +205,7 @@ class App:
             self.categories = ["All"]
             self.set_message(f"Could not load {self.library.name}: {exc}", ttl=6.0)
         self.category_index = 0
+        self.category_scroll = 0
         self.book_index = 0
         self.book_scroll = 0
         self.query = ""
@@ -240,6 +242,22 @@ class App:
         max_scroll = max(0, visible_count - max_rows)
         self.book_scroll = min(max(0, self.book_scroll), max_scroll)
 
+    def clamp_category_view(self, max_rows: int) -> None:
+        if not self.categories:
+            self.category_index = 0
+            self.category_scroll = 0
+            return
+        self.category_index = min(max(0, self.category_index), len(self.categories) - 1)
+        if max_rows <= 0:
+            self.category_scroll = self.category_index
+            return
+        if self.category_index < self.category_scroll:
+            self.category_scroll = self.category_index
+        elif self.category_index >= self.category_scroll + max_rows:
+            self.category_scroll = self.category_index - max_rows + 1
+        max_scroll = max(0, len(self.categories) - max_rows)
+        self.category_scroll = min(max(0, self.category_scroll), max_scroll)
+
     def set_message(self, message: str, ttl: float = MESSAGE_TTL_SECONDS) -> None:
         self.message = message
         self.message_until = time.monotonic() + ttl
@@ -274,7 +292,9 @@ class App:
         query = f"Search: {self.query}" if self.query else "Search: "
 
         max_rows = max(0, height - detail_height - 5)
+        max_category_rows = max(0, height - 6)
         self.clamp_book_view(len(visible), max_rows)
+        self.clamp_category_view(max_category_rows)
         selected_book = visible[self.book_index] if visible else None
         detail_y = height - detail_height
         stdscr.erase()
@@ -289,8 +309,8 @@ class App:
         draw_text(stdscr, 3, 0, " Categories", left_width, curses.A_BOLD)
         draw_text(stdscr, 3, left_width + 2, " Books", right_width, curses.A_BOLD)
 
-        for row, category in enumerate(self.categories[: max(0, height - 6)], start=4):
-            idx = row - 4
+        for row, category in enumerate(self.categories[self.category_scroll : self.category_scroll + max_category_rows], start=4):
+            idx = self.category_scroll + row - 4
             label = label_category(category) if category != "All" else "All"
             count = len([b for b in self.books if category == "All" or b.category == category])
             attr = curses.color_pair(PAIR_SELECTION) if self.focus == "categories" and idx == self.category_index else 0
@@ -420,6 +440,7 @@ class App:
             self.books = load_books(self.library)
             self.categories = self.build_categories()
             self.category_index = min(self.category_index, len(self.categories) - 1)
+            self.category_scroll = 0
             self.book_index = 0
             self.book_scroll = 0
             self.set_message("Index refreshed")
@@ -521,9 +542,19 @@ class App:
                 else:
                     self.book_index = min(max(0, len(visible) - 1), self.book_index + 1)
             elif key in (curses.KEY_PPAGE,):
-                self.book_index = max(0, self.book_index - 10)
+                if self.focus == "categories":
+                    self.category_index = max(0, self.category_index - 10)
+                    self.book_index = 0
+                    self.book_scroll = 0
+                else:
+                    self.book_index = max(0, self.book_index - 10)
             elif key in (curses.KEY_NPAGE,):
-                self.book_index = min(max(0, len(visible) - 1), self.book_index + 10)
+                if self.focus == "categories":
+                    self.category_index = min(len(self.categories) - 1, self.category_index + 10)
+                    self.book_index = 0
+                    self.book_scroll = 0
+                else:
+                    self.book_index = min(max(0, len(visible) - 1), self.book_index + 10)
             elif key in (curses.KEY_ENTER, 10, 13):
                 if self.focus == "categories":
                     self.focus = "books"
