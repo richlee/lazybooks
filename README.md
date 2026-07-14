@@ -17,6 +17,7 @@ The core workflow is:
 - `bookfind`: searches the manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
 - `booktui`: full terminal UI with categories, search, cache state, and PDF fetch/open.
+- `bookindex`: builds `index.html` and `manifest.json` for a folder of PDFs.
 
 ## Dependencies
 
@@ -183,6 +184,20 @@ This copies only:
 - `manifest.json`
 
 It does not copy PDFs.
+
+## Build an index
+
+For a folder-backed library:
+
+```sh
+bookindex \
+  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech" \
+  --index-dir "$HOME/book-indexes/tech" \
+  --title "Tech Books" \
+  --library-name Tech
+```
+
+`bookindex` scans PDFs recursively. If it finds a Calibre `metadata.db`, it uses Calibre title, author, and tag metadata for those PDFs.
 
 ## Search from the CLI
 
