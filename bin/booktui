@@ -161,6 +161,7 @@ class App:
         self.categories = self.build_categories()
         self.category_index = 0
         self.book_index = 0
+        self.book_scroll = 0
         self.focus = "books"
         self.query = ""
         self.requested_cover_path: str | None = None
@@ -186,6 +187,22 @@ class App:
                 result.append(book)
         return sorted(result, key=lambda book: book.title.casefold())
 
+    def clamp_book_view(self, visible_count: int, max_rows: int) -> None:
+        if visible_count == 0:
+            self.book_index = 0
+            self.book_scroll = 0
+            return
+        self.book_index = min(max(0, self.book_index), visible_count - 1)
+        if max_rows <= 0:
+            self.book_scroll = self.book_index
+            return
+        if self.book_index < self.book_scroll:
+            self.book_scroll = self.book_index
+        elif self.book_index >= self.book_scroll + max_rows:
+            self.book_scroll = self.book_index - max_rows + 1
+        max_scroll = max(0, visible_count - max_rows)
+        self.book_scroll = min(max(0, self.book_scroll), max_scroll)
+
     def draw(self) -> None:
         stdscr = self.stdscr
         stdscr.erase()
@@ -193,8 +210,7 @@ class App:
         left_width = max(22, min(34, width // 3))
         right_width = width - left_width - 1
         visible = self.visible_books()
-        if self.book_index >= len(visible):
-            self.book_index = max(0, len(visible) - 1)
+        self.clamp_book_view(len(visible), max(0, height - 4 - 5))
         selected_book = visible[self.book_index] if visible else None
         thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
         detail_height = 14 if thumbnail_active else 4
@@ -216,10 +232,20 @@ class App:
             attr = curses.A_REVERSE if self.focus == "categories" and idx == self.category_index else 0
             draw_text(stdscr, row, 1, f"{label} ({count})", left_width - 2, attr)
 
-        max_rows = max(0, height - detail_height - 4)
-        start = 0
-        if self.book_index >= max_rows:
-            start = self.book_index - max_rows + 1
+        max_rows = max(0, height - detail_height - 5)
+        self.clamp_book_view(len(visible), max_rows)
+        selected_book = visible[self.book_index] if visible else None
+        updated_thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
+        updated_detail_height = 14 if updated_thumbnail_active else 4
+        if updated_detail_height != detail_height:
+            detail_height = updated_detail_height
+            max_rows = max(0, height - detail_height - 5)
+            self.clamp_book_view(len(visible), max_rows)
+            selected_book = visible[self.book_index] if visible else None
+            thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
+        else:
+            thumbnail_active = updated_thumbnail_active
+        start = self.book_scroll
         for row, book in enumerate(visible[start : start + max_rows], start=4):
             idx = start + row - 4
             attr = curses.A_REVERSE if self.focus == "books" and idx == self.book_index else 0
@@ -328,6 +354,7 @@ class App:
             value = self.stdscr.getstr(height - 1, 8, width - 9).decode()
             self.query = value.strip()
             self.book_index = 0
+            self.book_scroll = 0
         except curses.error:
             pass
         finally:
@@ -358,6 +385,7 @@ class App:
             self.categories = self.build_categories()
             self.category_index = min(self.category_index, len(self.categories) - 1)
             self.book_index = 0
+            self.book_scroll = 0
             self.message = "Index refreshed"
         except Exception as exc:
             self.message = f"Refresh failed: {exc}"
@@ -380,12 +408,14 @@ class App:
                 if self.focus == "categories":
                     self.category_index = max(0, self.category_index - 1)
                     self.book_index = 0
+                    self.book_scroll = 0
                 else:
                     self.book_index = max(0, self.book_index - 1)
             elif key in (curses.KEY_DOWN, ord("j")):
                 if self.focus == "categories":
                     self.category_index = min(len(self.categories) - 1, self.category_index + 1)
                     self.book_index = 0
+                    self.book_scroll = 0
                 else:
                     self.book_index = min(max(0, len(visible) - 1), self.book_index + 1)
             elif key in (curses.KEY_PPAGE,):
@@ -396,6 +426,7 @@ class App:
                 if self.focus == "categories":
                     self.focus = "books"
                     self.book_index = 0
+                    self.book_scroll = 0
                 else:
                     self.open_selected()
             elif key == ord("/"):
@@ -403,6 +434,7 @@ class App:
             elif key == ord("c"):
                 self.query = ""
                 self.book_index = 0
+                self.book_scroll = 0
                 self.message = "Search cleared"
             elif key == ord("r"):
                 self.refresh()
