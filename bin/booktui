@@ -13,11 +13,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from lazybooks_config import LibraryConfig, load_libraries
 
-INDEX = Path(os.environ.get("LAZYBOOKS_MANIFEST", "~/book-indexes/assurance/manifest.json")).expanduser()
-CACHE = Path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")).expanduser()
-LOCAL_ONEDRIVE_PREFIX = os.environ.get("LAZYBOOKS_LOCAL_PREFIX", str(Path.home() / "OneDrive") + "/")
-REMOTE = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
 PAIR_META = 2
 PAIR_STATUS = 3
 PAIR_ACCENT = 4
@@ -26,7 +23,7 @@ PAIR_AUTHOR = 6
 PAIR_DIVIDER = 7
 PAIR_MODAL = 8
 PAIR_MODAL_BORDER = 9
-HELP_MESSAGE = "Enter: fetch/open  Right/l: details  /: search  Tab: pane  r: refresh  q: quit"
+HELP_MESSAGE = "Enter: fetch/open  Right/l: details  1-9: library  /: search  Tab: pane  r: refresh  q: quit"
 MESSAGE_TTL_SECONDS = 3.0
 
 
@@ -39,8 +36,8 @@ class Book:
     canonical_path: str
 
 
-def load_books() -> list[Book]:
-    data = json.loads(INDEX.read_text())
+def load_books(library: LibraryConfig) -> list[Book]:
+    data = json.loads(library.manifest.read_text())
     return [
         Book(
             title=item.get("title", ""),
@@ -65,10 +62,10 @@ def safe_name(book: Book) -> str:
     return f"{name}.pdf"
 
 
-def remote_path(canonical_path: str) -> str:
-    if not canonical_path.startswith(LOCAL_ONEDRIVE_PREFIX):
+def remote_path(canonical_path: str, library: LibraryConfig) -> str:
+    if not canonical_path.startswith(library.local_prefix):
         raise ValueError(f"Unsupported path: {canonical_path}")
-    return REMOTE + canonical_path[len(LOCAL_ONEDRIVE_PREFIX) :]
+    return library.remote + canonical_path[len(library.local_prefix) :]
 
 
 def open_file(path: Path) -> None:
@@ -80,15 +77,15 @@ def open_file(path: Path) -> None:
         subprocess.run(["xdg-open", str(path)], check=False)
 
 
-def fetch_book(book: Book) -> Path:
-    CACHE.mkdir(parents=True, exist_ok=True)
-    target = CACHE / safe_name(book)
-    subprocess.run(["rclone", "copyto", remote_path(book.canonical_path), str(target)], check=True)
+def fetch_book(book: Book, library: LibraryConfig) -> Path:
+    library.cache.mkdir(parents=True, exist_ok=True)
+    target = library.cache / safe_name(book)
+    subprocess.run(["rclone", "copyto", remote_path(book.canonical_path, library), str(target)], check=True)
     return target
 
 
-def cached_path(book: Book) -> Path:
-    return CACHE / safe_name(book)
+def cached_path(book: Book, library: LibraryConfig) -> Path:
+    return library.cache / safe_name(book)
 
 
 def truncate(value: str, width: int) -> str:
@@ -179,10 +176,12 @@ def init_palette() -> None:
 
 
 class App:
-    def __init__(self, stdscr: curses.window, books: list[Book]) -> None:
+    def __init__(self, stdscr: curses.window, libraries: list[LibraryConfig], library_index: int) -> None:
         self.stdscr = stdscr
-        self.books = books
-        self.categories = self.build_categories()
+        self.libraries = libraries
+        self.library_index = library_index
+        self.books: list[Book] = []
+        self.categories: list[str] = ["All"]
         self.category_index = 0
         self.book_index = 0
         self.book_scroll = 0
@@ -190,6 +189,24 @@ class App:
         self.query = ""
         self.message = ""
         self.message_until = 0.0
+        self.load_current_library()
+
+    @property
+    def library(self) -> LibraryConfig:
+        return self.libraries[self.library_index]
+
+    def load_current_library(self) -> None:
+        try:
+            self.books = load_books(self.library)
+            self.categories = self.build_categories()
+        except Exception as exc:
+            self.books = []
+            self.categories = ["All"]
+            self.set_message(f"Could not load {self.library.name}: {exc}", ttl=6.0)
+        self.category_index = 0
+        self.book_index = 0
+        self.book_scroll = 0
+        self.query = ""
 
     def build_categories(self) -> list[str]:
         cats = sorted({book.category for book in self.books}, key=lambda value: label_category(value).casefold())
@@ -234,6 +251,18 @@ class App:
         self.message_until = 0.0
         return HELP_MESSAGE
 
+    def draw_library_tabs(self, width: int) -> None:
+        x = 0
+        draw_text(self.stdscr, 0, x, "lazybooks", width, curses.A_BOLD)
+        x += 11
+        for idx, library in enumerate(self.libraries[:9], start=1):
+            label = f"[{idx}] {library.name}"
+            attr = curses.color_pair(PAIR_SELECTION) if idx - 1 == self.library_index else muted_attr(PAIR_META)
+            draw_text(self.stdscr, 0, x, label, max(0, width - x), attr)
+            x += len(label) + 2
+            if x >= width:
+                break
+
     def draw(self) -> None:
         stdscr = self.stdscr
         height, width = stdscr.getmaxyx()
@@ -242,7 +271,6 @@ class App:
         visible = self.visible_books()
         detail_height = 4
 
-        title = "Assurance Books"
         query = f"Search: {self.query}" if self.query else "Search: "
 
         max_rows = max(0, height - detail_height - 5)
@@ -251,7 +279,7 @@ class App:
         detail_y = height - detail_height
         stdscr.erase()
 
-        draw_text(stdscr, 0, 0, title, width, curses.A_BOLD)
+        self.draw_library_tabs(width)
         draw_text(stdscr, 1, 0, query, width, curses.color_pair(PAIR_ACCENT))
         stdscr.attron(curses.color_pair(PAIR_DIVIDER))
         stdscr.hline(2, 0, curses.ACS_HLINE, width - 1)
@@ -279,7 +307,7 @@ class App:
         stdscr.attroff(curses.color_pair(PAIR_DIVIDER))
         if selected_book:
             book = selected_book
-            cache_state = "cached" if cached_path(book).exists() else "not cached"
+            cache_state = "cached" if cached_path(book, self.library).exists() else "not cached"
             category_label = label_category(book.category)
             detail_title = truncate(book.title, max(0, right_width - len(book.author) - len(category_label) - 8))
             detail_x = left_width + 2
@@ -361,7 +389,7 @@ class App:
         self.set_message(f"Fetching {book.title}...", ttl=30.0)
         self.draw()
         try:
-            target = fetch_book(book)
+            target = fetch_book(book, self.library)
             self.set_message(f"Opened {target.name}")
             open_file(target)
         except Exception as exc:
@@ -369,8 +397,27 @@ class App:
 
     def refresh(self) -> None:
         try:
-            subprocess.run(["bookrefresh"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.books = load_books()
+            if not self.library.index_remote:
+                raise RuntimeError(f"No index_remote configured for {self.library.name}")
+            self.library.index_dir.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                [
+                    "rclone",
+                    "copy",
+                    self.library.index_remote,
+                    str(self.library.index_dir),
+                    "--filter",
+                    "+ index.html",
+                    "--filter",
+                    "+ manifest.json",
+                    "--filter",
+                    "- *",
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.books = load_books(self.library)
             self.categories = self.build_categories()
             self.category_index = min(self.category_index, len(self.categories) - 1)
             self.book_index = 0
@@ -389,8 +436,8 @@ class App:
         modal_x = min(max(left_width + 3, width - modal_width - 3), max(0, width - modal_width - 1))
         modal_y = min(max(3, selected_row - 2), max(1, height - modal_height - 2))
         body_width = max(1, modal_width - 4)
-        cache_state = "cached" if cached_path(book).exists() else "not cached"
-        cache_file = str(cached_path(book))
+        cache_state = "cached" if cached_path(book, self.library).exists() else "not cached"
+        cache_file = str(cached_path(book, self.library))
 
         lines: list[tuple[str, int]] = [("Book details", curses.A_BOLD | curses.color_pair(PAIR_ACCENT)), ("", 0)]
         for label, value in [
@@ -435,6 +482,15 @@ class App:
             self.stdscr.timeout(250)
         self.set_message("Details closed")
 
+    def switch_library(self, library_index: int) -> None:
+        if library_index < 0 or library_index >= len(self.libraries):
+            return
+        if library_index == self.library_index:
+            return
+        self.library_index = library_index
+        self.load_current_library()
+        self.set_message(f"Switched to {self.library.name}")
+
     def run(self) -> None:
         self.stdscr.timeout(250)
         while True:
@@ -442,6 +498,9 @@ class App:
             key = self.stdscr.getch()
             visible = self.visible_books()
             if key == -1:
+                continue
+            if ord("1") <= key <= ord("9"):
+                self.switch_library(key - ord("1"))
                 continue
             if key in (ord("q"), 27):
                 return
@@ -492,9 +551,8 @@ def main(stdscr: curses.window) -> None:
     curses.curs_set(0)
     init_palette()
     stdscr.keypad(True)
-    if not INDEX.exists():
-        raise SystemExit(f"Missing {INDEX}. Run bookrefresh first.")
-    App(stdscr, load_books()).run()
+    libraries, library_index = load_libraries()
+    App(stdscr, libraries, library_index).run()
 
 
 if __name__ == "__main__":

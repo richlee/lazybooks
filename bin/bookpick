@@ -1,10 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MANIFEST="${LAZYBOOKS_MANIFEST:-$HOME/book-indexes/assurance/manifest.json}"
-CACHE="${LAZYBOOKS_CACHE:-$HOME/book-cache}"
-REMOTE_PREFIX="${LAZYBOOKS_LOCAL_PREFIX:-$HOME/OneDrive/}"
-REMOTE_NAME="${LAZYBOOKS_REMOTE:-onedrive:}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIBRARY="${1:-}"
+
+config="$(
+  PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY' "$LIBRARY"
+import sys
+from lazybooks_config import load_libraries
+
+library_key = sys.argv[1]
+libraries, default_index = load_libraries()
+library = libraries[default_index]
+if library_key:
+    matches = [candidate for candidate in libraries if candidate.key == library_key]
+    if not matches:
+        print(f"Unknown library: {library_key}", file=sys.stderr)
+        print("Available libraries: " + ", ".join(candidate.key for candidate in libraries), file=sys.stderr)
+        raise SystemExit(2)
+    library = matches[0]
+
+print(library.manifest)
+print(library.cache)
+print(library.local_prefix)
+print(library.remote)
+print(library.name)
+PY
+)"
+
+MANIFEST="$(printf '%s\n' "$config" | sed -n '1p')"
+CACHE="$(printf '%s\n' "$config" | sed -n '2p')"
+REMOTE_PREFIX="$(printf '%s\n' "$config" | sed -n '3p')"
+REMOTE_NAME="$(printf '%s\n' "$config" | sed -n '4p')"
+LIBRARY_NAME="$(printf '%s\n' "$config" | sed -n '5p')"
 
 if [[ ! -f "$MANIFEST" ]]; then
   echo "Missing manifest: $MANIFEST"
@@ -45,7 +73,7 @@ picked="$(
     fzf \
       --delimiter=$'\t' \
       --with-nth=2,3,4 \
-      --prompt='books> ' \
+      --prompt="$LIBRARY_NAME> " \
       --header='Enter: fetch/open | type to filter' \
       --preview='printf "Category: {2}\nTitle: {3}\nAuthor: {4}\nSource: {5}\n\nPath:\n{6}\n"' \
       --preview-window=down,8

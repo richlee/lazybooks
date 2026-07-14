@@ -1,16 +1,61 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env python3
 
-REMOTE="${LAZYBOOKS_INDEX_REMOTE:-onedrive:Library/book-indexes/assurance}"
-LOCAL="${LAZYBOOKS_INDEX_DIR:-$HOME/book-indexes/assurance}"
+from __future__ import annotations
 
-mkdir -p "$LOCAL"
+import argparse
+import subprocess
+import sys
 
-rclone copy "$REMOTE" "$LOCAL" \
-  --filter "+ index.html" \
-  --filter "+ manifest.json" \
-  --filter "- *"
+from lazybooks_config import LibraryConfig, load_libraries
 
-echo "Refreshed lazybooks index:"
-echo "  $LOCAL/index.html"
-echo "  $LOCAL/manifest.json"
+
+def refresh_library(library: LibraryConfig) -> None:
+    if not library.index_remote:
+        raise RuntimeError(f"No index_remote configured for {library.name}")
+    library.index_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            "rclone",
+            "copy",
+            library.index_remote,
+            str(library.index_dir),
+            "--filter",
+            "+ index.html",
+            "--filter",
+            "+ manifest.json",
+            "--filter",
+            "- *",
+        ],
+        check=True,
+    )
+    print(f"Refreshed {library.name}:")
+    print(f"  {library.index_dir / 'index.html'}")
+    print(f"  {library.manifest}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Refresh lazybooks index files from rclone remotes.")
+    parser.add_argument("library", nargs="?", help="Library key to refresh. Defaults to configured default.")
+    parser.add_argument("--all", action="store_true", help="Refresh all configured libraries.")
+    args = parser.parse_args()
+
+    libraries, default_index = load_libraries()
+    selected = libraries
+    if not args.all:
+        if args.library:
+            selected = [library for library in libraries if library.key == args.library]
+            if not selected:
+                print(f"Unknown library: {args.library}", file=sys.stderr)
+                print("Available libraries: " + ", ".join(library.key for library in libraries), file=sys.stderr)
+                return 2
+        else:
+            selected = [libraries[default_index]]
+
+    for library in selected:
+        refresh_library(library)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

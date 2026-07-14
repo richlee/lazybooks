@@ -2,7 +2,7 @@
 
 Lazy terminal access to a cloud-hosted Calibre library.
 
-`lazybooks` is a small set of scripts for browsing a generated book manifest, fetching a selected PDF from OneDrive with `rclone`, and opening it locally. It is designed for machines where you can access OneDrive through an API/browser flow, but cannot or do not want to sync the full library into Finder.
+`lazybooks` is a small set of scripts for browsing generated book manifests, fetching a selected PDF from an `rclone` remote, and opening it locally. It is designed for machines where you can access cloud storage through an API/browser flow, but cannot or do not want to sync the full library into Finder.
 
 The core workflow is:
 
@@ -87,7 +87,7 @@ Or copy/symlink scripts into `~/bin`.
 
 ## Configuration
 
-The scripts work with these defaults:
+Without a config file, the scripts use the original single-library assurance defaults:
 
 ```sh
 LAZYBOOKS_INDEX_REMOTE='onedrive:Library/book-indexes/assurance'
@@ -119,10 +119,45 @@ becomes:
 onedrive:Library/assurance/...
 ```
 
+For multiple libraries, create `~/.config/lazybooks/config.toml`:
+
+```toml
+default = "assurance"
+cache = "~/book-cache"
+remote = "onedrive:"
+local_prefix = "~/OneDrive/"
+
+[libraries.assurance]
+name = "Assurance"
+index_dir = "~/book-indexes/assurance"
+index_remote = "onedrive:Library/book-indexes/assurance"
+
+[libraries.tech]
+name = "Tech"
+index_dir = "~/book-indexes/tech"
+index_remote = "onedrive:Library/book-indexes/tech"
+
+[libraries.personal]
+name = "Personal"
+index_dir = "~/book-indexes/personal"
+index_remote = "onedrive:Library/book-indexes/personal"
+```
+
+Each library can also override `manifest`, `cache`, `remote`, and `local_prefix`. `manifest` defaults to `index_dir/manifest.json`.
+
+An example is included at `examples/config.toml`.
+
 ## Refresh the local manifest
 
 ```sh
 bookrefresh
+```
+
+With a config file:
+
+```sh
+bookrefresh assurance
+bookrefresh --all
 ```
 
 This copies only:
@@ -139,6 +174,7 @@ List matches:
 ```sh
 bookfind secure
 bookfind architecture metrics
+bookfind --library tech kubernetes
 ```
 
 Fetch and open a result:
@@ -157,6 +193,7 @@ bookfind secure -n 1 --no-open
 
 ```sh
 bookpick
+bookpick tech
 ```
 
 Type to filter, press Enter to fetch and open the selected book.
@@ -175,6 +212,7 @@ Keys:
 - `c`: clear search
 - `Enter`: fetch and open selected book
 - `Right` or `l`: show book details; any key closes the popover
+- `1`-`9`: switch configured libraries
 - `r`: refresh manifest
 - `q` or `Esc`: quit
 
