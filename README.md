@@ -235,6 +235,17 @@ in a manual-review bucket. Single-occurrence Calibre tags are excluded from the
 `recurring_tags` CSV column because they are usually import noise, source labels,
 or accidental one-off metadata rather than useful browsing facets.
 
+To write the proposed category tags back to Calibre:
+
+```sh
+booktaxonomy tech personal --apply
+```
+
+`--apply` creates a timestamped `metadata.db.lazybooks-backup-*` file beside each
+Calibre database, then replaces each book's Calibre tags with its proposed
+taxonomy category. It works on all Calibre book records in the selected
+libraries, not just PDFs.
+
 ## Search from the CLI
 
 List matches:

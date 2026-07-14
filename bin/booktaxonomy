@@ -6,9 +6,11 @@ import argparse
 import csv
 import json
 import re
+import shutil
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from lazybooks_config import LibraryConfig, load_libraries
@@ -31,12 +33,14 @@ NOISY_TAGS = {
 
 @dataclass(frozen=True)
 class MetadataBook:
+    id: int
     library: str
     title: str
     authors: str
     tags: str
     comments: str
     canonical_path: str
+    db_path: Path
 
 
 @dataclass(frozen=True)
@@ -120,32 +124,37 @@ def load_db_books(library: LibraryConfig) -> list[MetadataBook]:
                   b.id,
                   b.title,
                   b.path,
-                  d.name as data_name,
-                  d.format,
+                  (
+                    select d.name || '.' || lower(d.format)
+                    from data d
+                    where d.book = b.id
+                    order by d.format collate nocase
+                    limit 1
+                  ) as data_file,
                   coalesce(group_concat(distinct a.name), 'Unknown') as authors,
                   coalesce(group_concat(distinct t.name), '') as tags,
                   coalesce(c.text, '') as comments
                 from books b
-                join data d on d.book = b.id
                 left join books_authors_link bal on bal.book = b.id
                 left join authors a on a.id = bal.author
                 left join books_tags_link btl on btl.book = b.id
                 left join tags t on t.id = btl.tag
                 left join comments c on c.book = b.id
-                where lower(d.format) = 'pdf'
-                group by b.id, d.id
+                group by b.id
                 order by b.title collate nocase
             """
             for row in conn.execute(query):
-                path = root / row["path"] / f"{row['data_name']}.{row['format'].lower()}"
+                path = root / row["path"] / (row["data_file"] or "")
                 books.append(
                     MetadataBook(
+                        id=int(row["id"]),
                         library=library.key,
                         title=row["title"] or path.stem,
                         authors=clean_author(row["authors"] or "Unknown"),
                         tags=row["tags"] or "",
                         comments=row["comments"] or "",
                         canonical_path=str(path),
+                        db_path=root / "metadata.db",
                     )
                 )
     return books
@@ -259,6 +268,45 @@ def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]]) -
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def ensure_tag(conn: sqlite3.Connection, name: str) -> int:
+    row = conn.execute("select id from tags where name = ? collate nocase", (name,)).fetchone()
+    if row:
+        return int(row[0])
+    cursor = conn.execute("insert into tags(name) values (?)", (name,))
+    return int(cursor.lastrowid)
+
+
+def backup_db(db_path: Path) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = db_path.with_name(f"{db_path.name}.lazybooks-backup-{timestamp}")
+    shutil.copy2(db_path, backup)
+    return backup
+
+
+def apply_proposals(proposals: list[Proposal]) -> list[tuple[Path, int, Path]]:
+    applied: list[tuple[Path, int, Path]] = []
+    for db_path in sorted({proposal.book.db_path for proposal in proposals}, key=lambda path: str(path).casefold()):
+        db_proposals = [proposal for proposal in proposals if proposal.book.db_path == db_path]
+        backup = backup_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            with conn:
+                for proposal in db_proposals:
+                    tag_id = ensure_tag(conn, proposal.category)
+                    conn.execute("delete from books_tags_link where book = ?", (proposal.book.id,))
+                    conn.execute(
+                        "insert or ignore into books_tags_link(book, tag) values (?, ?)",
+                        (proposal.book.id, tag_id),
+                    )
+                conn.execute(
+                    """
+                    delete from tags
+                    where id not in (select distinct tag from books_tags_link)
+                    """
+                )
+        applied.append((db_path, len(db_proposals), backup))
+    return applied
+
+
 def selected_libraries(names: list[str]) -> list[LibraryConfig]:
     libraries, _ = load_libraries()
     if not names:
@@ -275,6 +323,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Propose a small review taxonomy for Calibre-backed lazybooks libraries.")
     parser.add_argument("libraries", nargs="*", help="Library keys to process. Defaults to tech and personal.")
     parser.add_argument("--output-dir", type=Path, default=Path("reports"), help="Directory for Markdown and CSV reports.")
+    parser.add_argument("--apply", action="store_true", help="Apply proposed taxonomy tags to Calibre metadata.db files after writing reports.")
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -288,6 +337,11 @@ def main() -> int:
         write_csv(args.output_dir / f"{library.key}-taxonomy-proposal.csv", proposals, tag_counts)
 
     write_summary(args.output_dir / "taxonomy-proposal.md", proposals_by_library)
+    if args.apply:
+        all_proposals = [proposal for proposals in proposals_by_library.values() for proposal in proposals]
+        for db_path, count, backup in apply_proposals(all_proposals):
+            print(f"applied {count} tags in {db_path}")
+            print(f"backup -> {backup}")
     for library, proposals in proposals_by_library.items():
         print(f"{library}: {len(proposals)} books -> {args.output_dir / f'{library}-taxonomy-proposal.csv'}")
     print(f"summary -> {args.output_dir / 'taxonomy-proposal.md'}")
