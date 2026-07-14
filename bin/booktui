@@ -148,10 +148,11 @@ class App:
         self.book_index = 0
         self.focus = "books"
         self.query = ""
-        self.show_thumbnail = False
+        self.requested_cover_path: str | None = None
         self.cover_executor = ThreadPoolExecutor(max_workers=1)
         self.cover_jobs: dict[str, Future[Path | None]] = {}
-        self.message = "Enter: fetch/open  /: search  Tab: switch pane  t: thumbnail  r: refresh  q: quit"
+        self.cover_errors: dict[str, str] = {}
+        self.message = "Enter: fetch/open  /: search  Tab: switch pane  t: fetch cover  r: refresh  q: quit"
 
     def build_categories(self) -> list[str]:
         cats = sorted({book.category for book in self.books}, key=lambda value: label_category(value).casefold())
@@ -176,7 +177,12 @@ class App:
         height, width = stdscr.getmaxyx()
         left_width = max(22, min(34, width // 3))
         right_width = width - left_width - 1
-        detail_height = 11 if self.show_thumbnail else 4
+        visible = self.visible_books()
+        if self.book_index >= len(visible):
+            self.book_index = max(0, len(visible) - 1)
+        selected_book = visible[self.book_index] if visible else None
+        thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
+        detail_height = 11 if thumbnail_active else 4
 
         title = "Assurance Books"
         query = f"Search: {self.query}" if self.query else "Search: "
@@ -195,9 +201,6 @@ class App:
             attr = curses.A_REVERSE if self.focus == "categories" and idx == self.category_index else 0
             draw_text(stdscr, row, 1, f"{label} ({count})", left_width - 2, attr)
 
-        visible = self.visible_books()
-        if self.book_index >= len(visible):
-            self.book_index = max(0, len(visible) - 1)
         max_rows = max(0, height - detail_height - 4)
         start = 0
         if self.book_index >= max_rows:
@@ -210,16 +213,16 @@ class App:
 
         detail_y = height - detail_height
         stdscr.hline(detail_y - 1, left_width + 1, curses.ACS_HLINE, max(0, right_width - 1))
-        if visible:
-            book = visible[self.book_index]
+        if selected_book:
+            book = selected_book
             cache_state = "cached" if cached_path(book).exists() else "not cached"
-            cover_state = "cover cached" if book.cover_path and cached_cover_path(book).exists() else ("cover available" if book.cover_path else "no cover")
+            cover_state = self.cover_state(book)
             detail = f"{book.title} | {book.author} | {label_category(book.category)}"
             draw_text(stdscr, detail_y, left_width + 2, detail, right_width - 2, curses.color_pair(4))
             draw_text(stdscr, detail_y + 1, left_width + 2, f"Cache: {cache_state} | {cover_state} | Source: {book.source}", right_width - 2, curses.color_pair(2))
             path_x = left_width + 2
             path_width = right_width - 2
-            if self.show_thumbnail:
+            if thumbnail_active:
                 path_x = left_width + 18
                 path_width = right_width - 18
                 draw_text(stdscr, detail_y + 3, left_width + 2, "Cover preview", 14, curses.color_pair(4))
@@ -227,6 +230,8 @@ class App:
                     draw_text(stdscr, detail_y + 5, left_width + 2, "No cover", 14, curses.color_pair(2))
                 elif cached_cover_path(book).exists():
                     draw_text(stdscr, detail_y + 5, left_width + 2, "Cached", 14, curses.color_pair(2))
+                elif book.cover_path in self.cover_errors:
+                    draw_text(stdscr, detail_y + 5, left_width + 2, "Failed", 14, curses.color_pair(2))
                 else:
                     self.ensure_cover_fetch(book)
                     draw_text(stdscr, detail_y + 5, left_width + 2, "Fetching...", 14, curses.color_pair(2))
@@ -234,8 +239,22 @@ class App:
                 draw_text(stdscr, detail_y + offset, path_x, line, path_width, curses.color_pair(2))
 
         status(stdscr, self.message)
-        if self.show_thumbnail and visible:
-            self.draw_thumbnail(visible[self.book_index], detail_y + 4, left_width + 2)
+        if selected_book and thumbnail_active:
+            self.draw_thumbnail(selected_book, detail_y + 4, left_width + 2)
+
+    def thumbnail_active(self, book: Book) -> bool:
+        return cached_cover_path(book).exists() or bool(book.cover_path and self.requested_cover_path == book.cover_path)
+
+    def cover_state(self, book: Book) -> str:
+        if not book.cover_path:
+            return "no cover"
+        if cached_cover_path(book).exists():
+            return "cover cached"
+        if book.cover_path in self.cover_errors:
+            return "cover failed"
+        if self.requested_cover_path == book.cover_path:
+            return "cover fetching"
+        return "cover available"
 
     def ensure_cover_fetch(self, book: Book) -> None:
         if not book.cover_path or cached_cover_path(book).exists():
@@ -248,6 +267,7 @@ class App:
             try:
                 job.result()
             except Exception as exc:
+                self.cover_errors[key] = str(exc)
                 self.message = f"Cover failed: {exc}"
             return
         self.cover_jobs[key] = self.cover_executor.submit(fetch_cover, book)
@@ -350,8 +370,18 @@ class App:
             elif key == ord("r"):
                 self.refresh()
             elif key == ord("t"):
-                self.show_thumbnail = not self.show_thumbnail
-                self.message = "Thumbnail preview on" if self.show_thumbnail else "Thumbnail preview off"
+                if visible:
+                    book = visible[self.book_index]
+                    if not book.cover_path:
+                        self.message = "No cover for selected book"
+                    else:
+                        self.requested_cover_path = book.cover_path
+                        if cached_cover_path(book).exists():
+                            self.message = "Cover already cached"
+                        else:
+                            self.cover_errors.pop(book.cover_path, None)
+                            self.ensure_cover_fetch(book)
+                            self.message = f"Fetching cover for {book.title}"
 
 
 def main(stdscr: curses.window) -> None:
