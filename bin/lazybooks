@@ -94,6 +94,13 @@ def app_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def project_version() -> str:
+    try:
+        return (app_root() / "VERSION").read_text(encoding="utf-8").strip() or "0+unknown"
+    except Exception:
+        return "0+unknown"
+
+
 def git_value(*args: str) -> str:
     try:
         result = subprocess.run(
@@ -107,8 +114,9 @@ def git_value(*args: str) -> str:
     return result.stdout.strip() or "unknown"
 
 
-def version_info() -> tuple[str, str]:
+def version_info() -> tuple[str, str, str]:
     return (
+        project_version(),
         git_value("rev-parse", "--short", "HEAD"),
         git_value("show", "-s", "--format=%cs", "HEAD"),
     )
@@ -585,7 +593,7 @@ class App:
     def show_about(self) -> None:
         self.draw()
         height, width = self.stdscr.getmaxyx()
-        commit, commit_date = version_info()
+        version, commit, commit_date = version_info()
         modal_width = min(max(58, width // 2), max(24, width - 4))
         modal_height = min(18, max(10, height - 4))
         modal_x = max(0, (width - modal_width) // 2)
@@ -599,7 +607,8 @@ class App:
             ("", 0),
             ("Lazy terminal access to cloud-hosted book libraries.", muted_attr(PAIR_META)),
             ("", 0),
-            (f"Version: {commit}", muted_attr(PAIR_META)),
+            (f"Version: {version}", muted_attr(PAIR_META)),
+            (f"Commit: {commit}", muted_attr(PAIR_META)),
             (f"Commit date: {commit_date}", muted_attr(PAIR_META)),
             ("License: MIT", muted_attr(PAIR_META)),
             ("", 0),
@@ -732,4 +741,8 @@ def main(stdscr: curses.window) -> None:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in {"--version", "-V"}:
+        version, commit, commit_date = version_info()
+        print(f"lazybooks {version} ({commit}, {commit_date})")
+        raise SystemExit(0)
     curses.wrapper(main)

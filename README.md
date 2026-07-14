@@ -63,6 +63,7 @@ Check the commands are visible:
 
 ```sh
 command -v lazybooks
+lazybooks --version
 bookrefresh --help
 bookindex --help
 booktaxonomy --help
@@ -431,6 +432,23 @@ Additional fields are ignored.
 ## License
 
 `lazybooks` is released under the MIT License. See `LICENSE`.
+
+## Versioning
+
+The project version is stored in `VERSION` and exposed by:
+
+```sh
+lazybooks --version
+```
+
+Git release tags use the same version with a `v` prefix, for example `v0.1.0`.
+For a release, update `VERSION`, commit it, tag the commit, and push both:
+
+```sh
+git tag v0.1.0
+git push
+git push origin v0.1.0
+```
 
 ## Troubleshooting
 
