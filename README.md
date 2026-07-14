@@ -290,6 +290,7 @@ Keys:
 - `/`: search
 - `c`: clear search
 - `Enter`: fetch and open selected book
+- `d`: delete the selected book's cached local copy
 - `Right` or `l`: show book details; any key closes the popover
 - `1`-`9`: switch configured libraries
 - `r`: refresh manifest

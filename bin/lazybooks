@@ -25,7 +25,7 @@ PAIR_MODAL = 8
 PAIR_MODAL_BORDER = 9
 PAIR_SELECTED_TEXT = 10
 PAIR_SELECTED_AUTHOR = 11
-HELP_MESSAGE = "Enter: fetch/open  Right/l: details  1-9: library  /: search  Tab: pane  r: refresh  q: quit"
+HELP_MESSAGE = "Enter: fetch/open  d: delete cache  Right/l: details  1-9: library  /: search  Tab: pane  r: refresh  q: quit"
 MESSAGE_TTL_SECONDS = 3.0
 
 
@@ -454,6 +454,22 @@ class App:
         except Exception as exc:
             self.set_message(f"Fetch failed: {exc}", ttl=6.0)
 
+    def delete_cached_selected(self) -> None:
+        visible = self.visible_books()
+        if not visible:
+            self.set_message("No book selected")
+            return
+        book = visible[self.book_index]
+        path = cached_path(book, self.library)
+        if not path.exists():
+            self.set_message("No cached copy to delete")
+            return
+        try:
+            path.unlink()
+            self.set_message(f"Deleted cached copy: {path.name}")
+        except Exception as exc:
+            self.set_message(f"Delete failed: {exc}", ttl=6.0)
+
     def refresh(self) -> None:
         try:
             if not self.library.index_remote:
@@ -613,6 +629,8 @@ class App:
                 self.book_index = 0
                 self.book_scroll = 0
                 self.set_message("Search cleared")
+            elif key == ord("d"):
+                self.delete_cached_selected()
             elif key == ord("r"):
                 self.refresh()
 
