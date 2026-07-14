@@ -16,7 +16,7 @@ The core workflow is:
 - `bookrefresh`: copies `index.html` and `manifest.json` from OneDrive into a local cache.
 - `bookfind`: searches the manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
-- `booktui`: full terminal UI with categories, search, cache state, and PDF fetch/open.
+- `lazybooks`: full terminal UI with categories, search, cache state, and PDF fetch/open.
 - `bookindex`: builds `index.html` and `manifest.json` for a folder of PDFs.
 - `booktaxonomy`: proposes cleaner review categories for Calibre-backed libraries.
 
@@ -280,7 +280,7 @@ Type to filter, press Enter to fetch and open the selected book.
 ## Browse with the TUI
 
 ```sh
-booktui
+lazybooks
 ```
 
 Keys:
@@ -326,7 +326,8 @@ Additional fields are ignored.
 
 `lazybooks` is intentionally read-oriented:
 
-- It does not modify Calibre metadata.
+- Normal browsing does not modify Calibre metadata.
+- `booktaxonomy --apply` can modify Calibre tags after writing a timestamped `metadata.db.lazybooks-backup-*` backup.
 - It does not write to OneDrive except through `rclone copy` in `bookrefresh`, which copies from OneDrive to local.
 - It fetches selected PDFs into a local cache.
 - It avoids using a remote mount for Calibre's `metadata.db`.

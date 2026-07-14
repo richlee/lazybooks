@@ -271,8 +271,6 @@ class App:
 
     def draw_library_tabs(self, width: int) -> None:
         x = 0
-        draw_text(self.stdscr, 0, x, "lazybooks", width, curses.A_BOLD)
-        x += 11
         for idx, library in enumerate(self.libraries[:9], start=1):
             label = f"[{idx}] {library.name}"
             attr = curses.color_pair(PAIR_SELECTION) if idx - 1 == self.library_index else muted_attr(PAIR_META)
@@ -281,10 +279,27 @@ class App:
             if x >= width:
                 break
 
+    def category_counts(self) -> dict[str, int]:
+        counts = {category: 0 for category in self.categories}
+        counts["All"] = len(self.books)
+        for book in self.books:
+            counts[book.category] = counts.get(book.category, 0) + 1
+        return counts
+
+    def category_width(self, terminal_width: int) -> int:
+        counts = self.category_counts()
+        longest = max(
+            (len(f"{label_category(category) if category != 'All' else 'All'} ({counts.get(category, 0)})") for category in self.categories),
+            default=20,
+        )
+        desired = longest + 3
+        max_width = max(24, min(44, terminal_width // 2))
+        return max(24, min(desired, max_width))
+
     def draw(self) -> None:
         stdscr = self.stdscr
         height, width = stdscr.getmaxyx()
-        left_width = max(22, min(34, width // 3))
+        left_width = self.category_width(width)
         right_width = width - left_width - 1
         visible = self.visible_books()
         detail_height = 4
@@ -309,10 +324,11 @@ class App:
         draw_text(stdscr, 3, 0, " Categories", left_width, curses.A_BOLD)
         draw_text(stdscr, 3, left_width + 2, " Books", right_width, curses.A_BOLD)
 
+        category_counts = self.category_counts()
         for row, category in enumerate(self.categories[self.category_scroll : self.category_scroll + max_category_rows], start=4):
             idx = self.category_scroll + row - 4
             label = label_category(category) if category != "All" else "All"
-            count = len([b for b in self.books if category == "All" or b.category == category])
+            count = category_counts.get(category, 0)
             attr = curses.color_pair(PAIR_SELECTION) if self.focus == "categories" and idx == self.category_index else 0
             draw_text(stdscr, row, 1, f"{label} ({count})", left_width - 2, attr)
 
@@ -450,7 +466,7 @@ class App:
     def show_details(self, book: Book) -> None:
         self.draw()
         height, width = self.stdscr.getmaxyx()
-        left_width = max(22, min(34, width // 3))
+        left_width = self.category_width(width)
         selected_row = 4 + max(0, self.book_index - self.book_scroll)
         modal_width = min(max(46, width // 2), max(20, width - left_width - 6))
         modal_height = min(15, max(8, height - 4))
