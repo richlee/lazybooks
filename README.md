@@ -1,72 +1,46 @@
 # lazybooks
 
-Lazy terminal access to a cloud-hosted Calibre library.
+Lazy terminal access to cloud-hosted book libraries.
 
-`lazybooks` is a small set of scripts for browsing generated book manifests, fetching a selected PDF from an `rclone` remote, and opening it locally. It is designed for machines where you can access cloud storage through an API/browser flow, but cannot or do not want to sync the full library into Finder.
+`lazybooks` is a small set of command-line tools for browsing generated book
+manifests, fetching a selected PDF from an `rclone` remote, and opening it
+locally. It is useful on machines where you can authenticate to OneDrive through
+`rclone`, but cannot or do not want to sync the whole library into Finder.
 
-The core workflow is:
+The normal workflow is:
 
-1. Generate `index.html` and `manifest.json` somewhere in OneDrive.
-2. Use `rclone` to refresh the small local manifest cache.
-3. Browse/search locally.
-4. Fetch one selected PDF on demand.
+1. Keep the source libraries in OneDrive, optionally managed by Calibre.
+2. Generate a small `index.html` and `manifest.json` for each library.
+3. Upload those index files to OneDrive.
+4. Refresh the local manifest cache on any machine.
+5. Browse locally and fetch individual PDFs on demand.
 
 ## Commands
 
+- `lazybooks`: full terminal UI with categories, search, cache state, PDF fetch/open, and cached-copy delete.
 - `bookrefresh`: copies `index.html` and `manifest.json` from OneDrive into a local cache.
-- `bookfind`: searches the manifest from the command line and fetches one selected PDF.
+- `bookfind`: searches a manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
-- `lazybooks`: full terminal UI with categories, search, cache state, and PDF fetch/open.
 - `bookindex`: builds `index.html` and `manifest.json` for a folder of PDFs.
-- `booktaxonomy`: proposes cleaner review categories for Calibre-backed libraries.
+- `booktaxonomy`: proposes and optionally applies cleaner Calibre taxonomy tags.
 
 ## Dependencies
 
 Required:
 
-- Python 3
+- Python 3.11 or newer
 - `rclone`
-- A configured `rclone` remote for OneDrive
+- A configured `rclone` remote for your cloud storage
 
 Optional:
 
 - `fzf` for `bookpick`
+- Calibre, if you want Calibre-managed metadata and tags
 
 On macOS with Homebrew:
 
 ```sh
 brew install rclone fzf
-```
-
-## rclone setup
-
-Create a OneDrive remote:
-
-```sh
-rclone config
-```
-
-Typical choices for a personal OneDrive:
-
-```text
-n) New remote
-name> onedrive
-Storage> onedrive
-client_id>
-client_secret>
-region> global
-tenant>
-Edit advanced config? n
-Use web browser to automatically authenticate rclone? y
-```
-
-Leave `client_id`, `client_secret`, and `tenant` blank unless you have a specific organisational setup that requires them.
-
-Smoke test:
-
-```sh
-rclone lsf onedrive:
-rclone lsf onedrive:"Library/book-indexes/assurance"
 ```
 
 ## Install
@@ -79,114 +53,114 @@ cd lazybooks
 export PATH="$PWD/bin:$PATH"
 ```
 
-For persistent shell setup, add this to your shell profile:
+For persistent shell setup, add the path to your shell profile:
 
 ```sh
 export PATH="$HOME/dev/lazybooks/bin:$PATH"
 ```
 
-Or copy/symlink scripts into `~/bin`.
+Check the commands are visible:
+
+```sh
+command -v lazybooks
+bookrefresh --help
+bookindex --help
+booktaxonomy --help
+```
+
+## rclone Setup
+
+Create a OneDrive remote:
+
+```sh
+rclone config
+```
+
+Typical choices for a personal OneDrive:
+
+```text
+n) New remote
+name> personal-onedrive
+Storage> onedrive
+client_id>
+client_secret>
+region> global
+tenant>
+Edit advanced config? n
+Use web browser to automatically authenticate rclone? y
+```
+
+Leave `client_id`, `client_secret`, and `tenant` blank unless you have a
+specific organisational setup that requires them.
+
+Smoke test:
+
+```sh
+rclone lsf personal-onedrive:
+rclone lsf personal-onedrive:"Library"
+```
+
+The examples below assume a remote named `personal-onedrive:`. If yours is named
+`onedrive:`, use that instead.
 
 ## Configuration
 
-Without a config file, the scripts use the original single-library assurance defaults:
-
-```sh
-LAZYBOOKS_INDEX_REMOTE='onedrive:Library/book-indexes/assurance'
-LAZYBOOKS_INDEX_DIR="$HOME/book-indexes/assurance"
-LAZYBOOKS_MANIFEST="$HOME/book-indexes/assurance/manifest.json"
-LAZYBOOKS_CACHE="$HOME/book-cache"
-LAZYBOOKS_REMOTE='onedrive:'
-LAZYBOOKS_LOCAL_PREFIX="$HOME/OneDrive/"
-```
-
-Override them in your shell profile if needed:
-
-```sh
-export LAZYBOOKS_INDEX_REMOTE='onedrive:Library/book-indexes/assurance'
-export LAZYBOOKS_LOCAL_PREFIX='/path/to/local/OneDrive/'
-```
-
-If your rclone remote has a different name, use that name instead:
-
-```sh
-export LAZYBOOKS_REMOTE='personal-onedrive:'
-export LAZYBOOKS_INDEX_REMOTE='personal-onedrive:Library/book-indexes/assurance'
-```
-
-`LAZYBOOKS_LOCAL_PREFIX` is important. It is the local path prefix stored in `manifest.json`; `lazybooks` rewrites that prefix to the `rclone` remote name when fetching files.
-
-For example:
-
-```text
-/path/to/local/OneDrive/Library/assurance/...
-```
-
-becomes:
-
-```text
-onedrive:Library/assurance/...
-```
-
-For multiple libraries, create `~/.config/lazybooks/config.toml`:
+Create `~/.config/lazybooks/config.toml`:
 
 ```toml
 default = "assurance"
 cache = "~/book-cache"
-remote = "onedrive:"
-local_prefix = "~/OneDrive/"
+remote = "personal-onedrive:"
+local_prefix = "~/Library/CloudStorage/OneDrive-Personal/"
 
 [libraries.assurance]
 name = "Assurance"
 index_dir = "~/book-indexes/assurance"
-index_remote = "onedrive:Library/book-indexes/assurance"
+index_remote = "personal-onedrive:Library/book-indexes/assurance"
 
 [libraries.tech]
 name = "Tech"
 index_dir = "~/book-indexes/tech"
-index_remote = "onedrive:Library/book-indexes/tech"
+index_remote = "personal-onedrive:Library/book-indexes/tech"
 
 [libraries.personal]
 name = "Personal"
 index_dir = "~/book-indexes/personal"
-index_remote = "onedrive:Library/book-indexes/personal"
+index_remote = "personal-onedrive:Library/book-indexes/personal"
 ```
 
-Set `remote` and each `index_remote` to match your actual `rclone config` remote name.
+Important fields:
 
-For a quick test, `LAZYBOOKS_REMOTE` can override the remote name from the config file:
+- `default`: the library opened by `bookrefresh` or `lazybooks` when no library is specified.
+- `cache`: where downloaded PDFs are stored locally.
+- `remote`: the `rclone` remote used to fetch PDFs.
+- `local_prefix`: the local filesystem prefix stored in generated manifests.
+- `index_dir`: where each library's small local `index.html` and `manifest.json` live.
+- `index_remote`: where those index files live in OneDrive.
 
-```sh
-LAZYBOOKS_REMOTE='personal-onedrive:' bookrefresh
+`local_prefix` matters because manifests store local-looking paths such as:
+
+```text
+/Users/me/Library/CloudStorage/OneDrive-Personal/Library/tech/...
 ```
 
-Each library can also override `manifest`, `cache`, `remote`, and `local_prefix`. `manifest` defaults to `index_dir/manifest.json`.
+`lazybooks` rewrites that prefix to the configured remote when fetching:
 
-An example is included at `examples/config.toml`.
-
-## Refresh the local manifest
-
-```sh
-bookrefresh
+```text
+personal-onedrive:Library/tech/...
 ```
 
-With a config file:
+An example config is included at `examples/config.toml`.
 
-```sh
-bookrefresh assurance
-bookrefresh --all
-```
+Environment variables such as `LAZYBOOKS_REMOTE` can override some config values,
+but a config file is easier for multi-library use.
 
-`bookrefresh --all` attempts every configured library and reports any missing remote index folders. It returns non-zero if any library fails.
+## Build Indexes
 
-This copies only:
+`bookindex` writes two files:
 
-- `index.html`
-- `manifest.json`
-
-It does not copy PDFs.
-
-## Build an index
+- `index.html`: a simple browser-friendly index.
+- `manifest.json`: the data used by `lazybooks`, `bookfind`, and `bookpick`.
 
 For a Calibre-backed library:
 
@@ -199,54 +173,197 @@ bookindex \
   --calibre-metadata-only
 ```
 
-`bookindex` scans PDFs recursively. If it finds a Calibre `metadata.db`, it uses Calibre title, author, and tag metadata for those PDFs.
+With `--calibre-metadata-only`, `bookindex` indexes PDFs referenced by Calibre's
+`metadata.db`, and uses Calibre title, author, and first tag as the browsing
+category.
 
-For non-Calibre folder-backed libraries with broad top-level folders, use more path depth for categories:
+For a folder of PDFs without Calibre metadata:
 
 ```sh
 bookindex \
-  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/personal" \
-  --index-dir "$HOME/book-indexes/personal" \
-  --title "Personal Books" \
-  --library-name Personal \
+  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/reference-pdfs" \
+  --index-dir "$HOME/book-indexes/reference" \
+  --title "Reference Books" \
+  --library-name Reference \
   --category-depth 2
 ```
 
-## Review taxonomy
+For non-Calibre folders, categories come from folder names. `--category-depth 2`
+uses the first two path components under the root.
 
-`booktaxonomy` reads the refreshed manifests, finds the local Calibre `metadata.db`
-files behind those books, and writes review-only taxonomy proposals:
+## Publish Indexes To OneDrive
+
+After building an index, upload only the small index files:
 
 ```sh
-booktaxonomy
+rclone copy "$HOME/book-indexes/tech" \
+  personal-onedrive:Library/book-indexes/tech \
+  --filter '+ index.html' \
+  --filter '+ manifest.json' \
+  --filter '- *'
+```
+
+Repeat for each library you want available from other machines.
+
+Then verify the configured refresh path:
+
+```sh
+bookrefresh tech
+bookrefresh --all
+```
+
+`bookrefresh` copies only `index.html` and `manifest.json`. It does not copy
+PDFs.
+
+## Taxonomies
+
+The TUI categories come from each book's `category` field in `manifest.json`.
+For Calibre-backed libraries, `bookindex` currently derives that category from
+the first Calibre tag on the book.
+
+Good taxonomy tags are broad enough to group related books, but specific enough
+to help browsing. Prefer a small controlled list:
+
+```text
+cloud-devops-platform
+software-architecture-design
+programming-languages
+engineering-leadership-career
+buddhism-meditation
+health-fitness-nutrition
+philosophy-consciousness
+```
+
+Avoid tags that are too broad, too narrow, or accidental:
+
+```text
+computing
+personal
+self
+MEAP V14
+JOHN STARR...
+SEL031000
+Mindrolling Lotus Garden
+```
+
+### Review Proposed Taxonomies
+
+`booktaxonomy` uses the refreshed manifests to find the configured Calibre
+libraries, then looks at title, author, existing tags, and comments before
+writing review files:
+
+```sh
 booktaxonomy tech personal
 ```
 
-Output goes to:
+Output:
 
-- `reports/taxonomy-proposal.md`
-- `reports/tech-taxonomy-proposal.csv`
-- `reports/personal-taxonomy-proposal.csv`
+```text
+reports/taxonomy-proposal.md
+reports/tech-taxonomy-proposal.csv
+reports/personal-taxonomy-proposal.csv
+```
 
-It does not update Calibre tags or rebuild manifests. The intent is to replace
-noisy first-tag categories such as `self`, `personal`, `tech`, `unknown`, and
-`MEAP Vnn` with a smaller browsing taxonomy, while keeping unclear/scanned items
-in a manual-review bucket. Single-occurrence Calibre tags are excluded from the
-`recurring_tags` CSV column because they are usually import noise, source labels,
-or accidental one-off metadata rather than useful browsing facets.
+The CSV includes:
 
-To write the proposed category tags back to Calibre:
+- current Calibre tags
+- recurring tags, excluding one-off tag noise
+- proposed taxonomy category
+- confidence
+- reason
+
+The generated reports are local and gitignored because they can contain private
+book titles.
+
+### Improve The Taxonomy
+
+The current classifier is deliberately simple and lives in `bin/booktaxonomy`.
+The rule lists are:
+
+- `TECH_RULES`
+- `PERSONAL_RULES`
+
+Each rule maps a category to title/tag/comment keywords. Edit those rules when a
+category is too broad, too narrow, or repeatedly wrong.
+
+This is a good place for manual or assistive AI review:
+
+1. Run `booktaxonomy tech personal`.
+2. Review `reports/*-taxonomy-proposal.csv`.
+3. Look especially at `*-manual-review`, low-confidence rows, and categories with only one or two books.
+4. Ask an assistant or LLM to propose a smaller controlled taxonomy from the CSV, but check the result yourself.
+5. Update the rules in `bin/booktaxonomy`.
+6. Rerun `booktaxonomy` until the category list is useful.
+
+Do not aim for perfect classification. A manual-review bucket is better than
+inventing misleading categories from poor metadata.
+
+### Apply Taxonomy Tags To Calibre
+
+When the proposal looks good:
 
 ```sh
 booktaxonomy tech personal --apply
 ```
 
-`--apply` creates a timestamped `metadata.db.lazybooks-backup-*` file beside each
-Calibre database, then replaces each book's Calibre tags with its proposed
-taxonomy category. It works on all Calibre book records in the selected
-libraries, not just PDFs.
+`--apply` creates a timestamped backup beside each Calibre database:
 
-## Search from the CLI
+```text
+metadata.db.lazybooks-backup-YYYYMMDD-HHMMSS
+```
+
+It then replaces each selected Calibre book's tags with its proposed taxonomy
+category. It works on all Calibre book records in the selected libraries, not
+just PDFs.
+
+After applying tags, rebuild and publish the affected indexes:
+
+```sh
+bookindex \
+  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre" \
+  --index-dir "$HOME/book-indexes/tech" \
+  --title "Tech Books" \
+  --library-name Tech \
+  --calibre-metadata-only
+
+rclone copy "$HOME/book-indexes/tech" \
+  personal-onedrive:Library/book-indexes/tech \
+  --filter '+ index.html' \
+  --filter '+ manifest.json' \
+  --filter '- *'
+
+bookrefresh tech
+```
+
+## Browse With The TUI
+
+```sh
+lazybooks
+```
+
+Keys:
+
+- `Up` / `Down` or `k` / `j`: move
+- `Tab`: switch between categories and books
+- `/`: search within the current category
+- `c`: clear search
+- `Enter`: fetch and open selected book
+- `d`: delete the selected book's cached local copy
+- `Right` or `l`: show book details; any key closes the popover
+- `1`-`9`: switch configured libraries
+- `r`: refresh manifest
+- `q` or `Esc`: quit
+
+PDFs are fetched into the configured cache, usually:
+
+```text
+~/book-cache
+```
+
+Deleting a cached book only removes the local downloaded copy. It does not touch
+OneDrive, Calibre, or the manifest.
+
+## Search From The CLI
 
 List matches:
 
@@ -268,7 +385,7 @@ Fetch without opening:
 bookfind secure -n 1 --no-open
 ```
 
-## Pick with fzf
+## Pick With fzf
 
 ```sh
 bookpick
@@ -277,32 +394,7 @@ bookpick tech
 
 Type to filter, press Enter to fetch and open the selected book.
 
-## Browse with the TUI
-
-```sh
-lazybooks
-```
-
-Keys:
-
-- `Up` / `Down` or `k` / `j`: move
-- `Tab`: switch between categories and books
-- `/`: search
-- `c`: clear search
-- `Enter`: fetch and open selected book
-- `d`: delete the selected book's cached local copy
-- `Right` or `l`: show book details; any key closes the popover
-- `1`-`9`: switch configured libraries
-- `r`: refresh manifest
-- `q` or `Esc`: quit
-
-PDFs are fetched into:
-
-```text
-~/book-cache
-```
-
-## Manifest format
+## Manifest Format
 
 `lazybooks` expects a JSON file with this shape:
 
@@ -314,8 +406,10 @@ PDFs are fetched into:
       "title": "Secure by Design",
       "author": "Dan Bergh Johnsson, Daniel Deogun, Daniel Sawano",
       "category": "security-reliability",
-      "canonical_path": "/path/to/local/OneDrive/Library/assurance/assurance-library-calibre/.../Secure by Design.pdf",
-      "source": "Assurance Calibre"
+      "canonical_path": "/Users/me/Library/CloudStorage/OneDrive-Personal/Library/assurance/.../Secure by Design.pdf",
+      "source": "Assurance Calibre",
+      "size": 1234567,
+      "created_at": "2026-07-14T12:00:00+00:00"
     }
   ]
 }
@@ -323,14 +417,36 @@ PDFs are fetched into:
 
 Additional fields are ignored.
 
-## Safety notes
-
-`lazybooks` is intentionally read-oriented:
+## Safety Notes
 
 - Normal browsing does not modify Calibre metadata.
-- `booktaxonomy --apply` can modify Calibre tags after writing a timestamped `metadata.db.lazybooks-backup-*` backup.
-- It does not write to OneDrive except through `rclone copy` in `bookrefresh`, which copies from OneDrive to local.
-- It fetches selected PDFs into a local cache.
-- It avoids using a remote mount for Calibre's `metadata.db`.
+- Fetching a book copies one PDF into the local cache.
+- Deleting a cached book removes only the local cached copy.
+- `bookrefresh` copies only index files from OneDrive to local disk.
+- Publishing indexes with `rclone copy` writes only `index.html` and `manifest.json` when the filters above are used.
+- `booktaxonomy --apply` modifies Calibre tags, but creates a timestamped `metadata.db.lazybooks-backup-*` first.
+- Avoid editing a Calibre SQLite database through a remote mount. Use a real local/synced filesystem for Calibre metadata operations.
 
-This avoids the common failure mode of editing a SQLite-backed Calibre library over a cloud or API-backed filesystem.
+## Troubleshooting
+
+If `bookrefresh` says the rclone remote is missing, check:
+
+```sh
+rclone listremotes
+rclone lsf personal-onedrive:
+```
+
+If fetch/open fails, confirm `local_prefix` matches the path prefix stored in
+the manifest:
+
+```sh
+python3 -m json.tool "$HOME/book-indexes/tech/manifest.json" | head
+```
+
+If categories look wrong:
+
+1. Check the Calibre tags.
+2. Run `booktaxonomy <library>`.
+3. Review the CSV.
+4. Apply corrected taxonomy tags.
+5. Rebuild and publish the index.
