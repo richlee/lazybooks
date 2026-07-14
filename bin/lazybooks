@@ -23,6 +23,8 @@ PAIR_AUTHOR = 6
 PAIR_DIVIDER = 7
 PAIR_MODAL = 8
 PAIR_MODAL_BORDER = 9
+PAIR_SELECTED_TEXT = 10
+PAIR_SELECTED_AUTHOR = 11
 HELP_MESSAGE = "Enter: fetch/open  Right/l: details  1-9: library  /: search  Tab: pane  r: refresh  q: quit"
 MESSAGE_TTL_SECONDS = 3.0
 
@@ -123,13 +125,21 @@ def muted_attr(pair: int) -> int:
 def draw_book_row(win: curses.window, y: int, x: int, book: Book, width: int, selected: bool) -> None:
     if width <= 0:
         return
-    selection_attr = curses.color_pair(PAIR_SELECTION)
+    selection_bg_attr = curses.color_pair(PAIR_SELECTION)
+    selected_text_attr = curses.color_pair(PAIR_SELECTED_TEXT) | curses.A_BOLD
+    selected_author_attr = curses.color_pair(PAIR_SELECTED_AUTHOR)
     author_attr = muted_attr(PAIR_AUTHOR)
     try:
         if selected:
-            win.addstr(y, x, " " * width, selection_attr)
-            row_text = f"{book.title} - {book.author}" if book.author and book.author != "Unknown" else book.title
-            draw_text(win, y, x, row_text, width, selection_attr)
+            win.addstr(y, x, " " * width, selection_bg_attr)
+            if book.author and book.author != "Unknown":
+                title_part = truncate(book.title, max(0, width - len(book.author) - 3))
+                draw_text(win, y, x, title_part, width, selected_text_attr)
+                author_x = x + len(title_part)
+                if author_x < x + width:
+                    draw_text(win, y, author_x, f" - {book.author}", x + width - author_x, selected_author_attr)
+            else:
+                draw_text(win, y, x, book.title, width, selected_text_attr)
             return
         if book.author and book.author != "Unknown":
             title_part = truncate(book.title, max(0, width - len(book.author) - 3))
@@ -164,6 +174,8 @@ def init_palette() -> None:
         curses.init_pair(PAIR_DIVIDER, 240, -1)
         curses.init_pair(PAIR_MODAL, 252, 236)
         curses.init_pair(PAIR_MODAL_BORDER, 109, 236)
+        curses.init_pair(PAIR_SELECTED_TEXT, 214, 238)
+        curses.init_pair(PAIR_SELECTED_AUTHOR, 250, 238)
     else:
         curses.init_pair(PAIR_META, curses.COLOR_WHITE, -1)
         curses.init_pair(PAIR_STATUS, curses.COLOR_BLACK, curses.COLOR_CYAN)
@@ -173,6 +185,8 @@ def init_palette() -> None:
         curses.init_pair(PAIR_DIVIDER, curses.COLOR_BLUE, -1)
         curses.init_pair(PAIR_MODAL, curses.COLOR_WHITE, curses.COLOR_BLACK)
         curses.init_pair(PAIR_MODAL_BORDER, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(PAIR_SELECTED_TEXT, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+        curses.init_pair(PAIR_SELECTED_AUTHOR, curses.COLOR_WHITE, curses.COLOR_BLUE)
 
 
 class App:
@@ -329,7 +343,12 @@ class App:
             idx = self.category_scroll + row - 4
             label = label_category(category) if category != "All" else "All"
             count = category_counts.get(category, 0)
-            attr = curses.color_pair(PAIR_SELECTION) if self.focus == "categories" and idx == self.category_index else 0
+            attr = (curses.color_pair(PAIR_SELECTED_TEXT) | curses.A_BOLD) if self.focus == "categories" and idx == self.category_index else 0
+            if self.focus == "categories" and idx == self.category_index:
+                try:
+                    stdscr.addstr(row, 1, " " * max(0, left_width - 2), curses.color_pair(PAIR_SELECTION))
+                except curses.error:
+                    pass
             draw_text(stdscr, row, 1, f"{label} ({count})", left_width - 2, attr)
 
         start = self.book_scroll
