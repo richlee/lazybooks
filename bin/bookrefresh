@@ -9,6 +9,14 @@ import sys
 from lazybooks_config import LibraryConfig, load_libraries
 
 
+def rclone_remotes() -> str:
+    try:
+        result = subprocess.run(["rclone", "listremotes"], check=True, capture_output=True, text=True)
+    except Exception:
+        return ""
+    return result.stdout.strip()
+
+
 def refresh_library(library: LibraryConfig) -> None:
     if not library.index_remote:
         raise RuntimeError(f"No index_remote configured for {library.name}")
@@ -57,6 +65,11 @@ def main() -> int:
         except subprocess.CalledProcessError as exc:
             print(f"Refresh failed for {library.name}.", file=sys.stderr)
             print(f"Tried remote index: {library.index_remote}", file=sys.stderr)
+            remotes = rclone_remotes()
+            if remotes:
+                print("Available rclone remotes:", file=sys.stderr)
+                for remote in remotes.splitlines():
+                    print(f"  {remote}", file=sys.stderr)
             print("Check the rclone remote name in ~/.config/lazybooks/config.toml or LAZYBOOKS_REMOTE.", file=sys.stderr)
             return exc.returncode
         except Exception as exc:

@@ -152,6 +152,12 @@ index_remote = "onedrive:Library/book-indexes/personal"
 
 Set `remote` and each `index_remote` to match your actual `rclone config` remote name.
 
+For a quick test, `LAZYBOOKS_REMOTE` can override the remote name from the config file:
+
+```sh
+LAZYBOOKS_REMOTE='personal-onedrive:' bookrefresh
+```
+
 Each library can also override `manifest`, `cache`, `remote`, and `local_prefix`. `manifest` defaults to `index_dir/manifest.json`.
 
 An example is included at `examples/config.toml`.

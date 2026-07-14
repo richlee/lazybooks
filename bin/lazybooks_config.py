@@ -49,6 +49,12 @@ def _fallback_library() -> list[LibraryConfig]:
     ]
 
 
+def _rewrite_remote(remote_path: str, old_remote: str, new_remote: str) -> str:
+    if old_remote != new_remote and remote_path.startswith(old_remote):
+        return new_remote + remote_path[len(old_remote) :]
+    return remote_path
+
+
 def load_libraries(config_path: Path = DEFAULT_CONFIG) -> tuple[list[LibraryConfig], int]:
     if not config_path.exists():
         return _fallback_library(), 0
@@ -56,7 +62,8 @@ def load_libraries(config_path: Path = DEFAULT_CONFIG) -> tuple[list[LibraryConf
     data = tomllib.loads(config_path.read_text())
     default_key = str(data.get("default", ""))
     global_cache = str(data.get("cache", os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")))
-    global_remote = str(data.get("remote", os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")))
+    configured_remote = str(data.get("remote", "onedrive:"))
+    global_remote = os.environ.get("LAZYBOOKS_REMOTE", configured_remote)
     global_prefix = str(data.get("local_prefix", os.environ.get("LAZYBOOKS_LOCAL_PREFIX", "~/OneDrive/")))
     library_data = data.get("libraries", {})
     if not isinstance(library_data, dict) or not library_data:
@@ -68,15 +75,18 @@ def load_libraries(config_path: Path = DEFAULT_CONFIG) -> tuple[list[LibraryConf
             continue
         index_dir = _expand_path(str(values.get("index_dir", f"~/book-indexes/{key}")))
         manifest = _expand_path(str(values.get("manifest", str(index_dir / "manifest.json"))))
+        library_remote = os.environ.get("LAZYBOOKS_REMOTE", str(values.get("remote", global_remote)))
+        configured_library_remote = str(values.get("remote", configured_remote))
+        index_remote = _rewrite_remote(str(values.get("index_remote", "")), configured_library_remote, library_remote)
         libraries.append(
             LibraryConfig(
                 key=str(key),
                 name=str(values.get("name", str(key).replace("-", " ").title())),
                 manifest=manifest,
                 index_dir=index_dir,
-                index_remote=str(values.get("index_remote", "")),
+                index_remote=index_remote,
                 cache=_expand_path(str(values.get("cache", global_cache))),
-                remote=str(values.get("remote", global_remote)),
+                remote=library_remote,
                 local_prefix=_local_prefix(str(values.get("local_prefix", global_prefix))),
             )
         )
