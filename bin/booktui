@@ -17,6 +17,12 @@ INDEX = Path(os.environ.get("LAZYBOOKS_MANIFEST", "~/book-indexes/assurance/mani
 CACHE = Path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")).expanduser()
 LOCAL_ONEDRIVE_PREFIX = os.environ.get("LAZYBOOKS_LOCAL_PREFIX", str(Path.home() / "OneDrive") + "/")
 REMOTE = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
+PAIR_META = 2
+PAIR_STATUS = 3
+PAIR_ACCENT = 4
+PAIR_SELECTION = 5
+PAIR_AUTHOR = 6
+PAIR_DIVIDER = 7
 
 
 @dataclass
@@ -97,13 +103,62 @@ def draw_text(win: curses.window, y: int, x: int, text: str, width: int, attr: i
         pass
 
 
+def muted_attr(pair: int) -> int:
+    attr = curses.color_pair(pair)
+    if curses.COLORS < 256:
+        attr |= curses.A_DIM
+    return attr
+
+
+def draw_book_row(win: curses.window, y: int, x: int, book: Book, width: int, selected: bool) -> None:
+    if width <= 0:
+        return
+    selection_attr = curses.color_pair(PAIR_SELECTION)
+    author_attr = muted_attr(PAIR_AUTHOR)
+    try:
+        if selected:
+            win.addstr(y, x, " " * width, selection_attr)
+            row_text = f"{book.title} - {book.author}" if book.author and book.author != "Unknown" else book.title
+            draw_text(win, y, x, row_text, width, selection_attr)
+            return
+        if book.author and book.author != "Unknown":
+            title_part = truncate(book.title, max(0, width - len(book.author) - 3))
+            draw_text(win, y, x, title_part, width)
+            author_x = x + len(title_part)
+            if author_x < x + width:
+                draw_text(win, y, author_x, f" - {book.author}", x + width - author_x, author_attr)
+        else:
+            draw_text(win, y, x, book.title, width)
+    except curses.error:
+        pass
+
+
 def status(stdscr: curses.window, message: str) -> None:
     height, width = stdscr.getmaxyx()
-    stdscr.attron(curses.color_pair(3))
+    stdscr.attron(curses.color_pair(PAIR_STATUS))
     stdscr.addstr(height - 1, 0, " " * (width - 1))
-    draw_text(stdscr, height - 1, 0, message, width - 1, curses.color_pair(3))
-    stdscr.attroff(curses.color_pair(3))
+    draw_text(stdscr, height - 1, 0, message, width - 1, curses.color_pair(PAIR_STATUS))
+    stdscr.attroff(curses.color_pair(PAIR_STATUS))
     stdscr.refresh()
+
+
+def init_palette() -> None:
+    curses.start_color()
+    curses.use_default_colors()
+    if curses.COLORS >= 256:
+        curses.init_pair(PAIR_META, 245, -1)
+        curses.init_pair(PAIR_STATUS, 235, 109)
+        curses.init_pair(PAIR_ACCENT, 114, -1)
+        curses.init_pair(PAIR_SELECTION, 253, 238)
+        curses.init_pair(PAIR_AUTHOR, 248, -1)
+        curses.init_pair(PAIR_DIVIDER, 240, -1)
+    else:
+        curses.init_pair(PAIR_META, curses.COLOR_WHITE, -1)
+        curses.init_pair(PAIR_STATUS, curses.COLOR_BLACK, curses.COLOR_CYAN)
+        curses.init_pair(PAIR_ACCENT, curses.COLOR_GREEN, -1)
+        curses.init_pair(PAIR_SELECTION, curses.COLOR_WHITE, curses.COLOR_BLUE)
+        curses.init_pair(PAIR_AUTHOR, curses.COLOR_WHITE, -1)
+        curses.init_pair(PAIR_DIVIDER, curses.COLOR_BLUE, -1)
 
 
 class App:
@@ -168,9 +223,11 @@ class App:
         stdscr.erase()
 
         draw_text(stdscr, 0, 0, title, width, curses.A_BOLD)
-        draw_text(stdscr, 1, 0, query, width, curses.color_pair(4))
+        draw_text(stdscr, 1, 0, query, width, curses.color_pair(PAIR_ACCENT))
+        stdscr.attron(curses.color_pair(PAIR_DIVIDER))
         stdscr.hline(2, 0, curses.ACS_HLINE, width - 1)
         stdscr.vline(3, left_width, curses.ACS_VLINE, max(0, height - 5))
+        stdscr.attroff(curses.color_pair(PAIR_DIVIDER))
 
         draw_text(stdscr, 3, 0, " Categories", left_width, curses.A_BOLD)
         draw_text(stdscr, 3, left_width + 2, " Books", right_width, curses.A_BOLD)
@@ -179,27 +236,37 @@ class App:
             idx = row - 4
             label = label_category(category) if category != "All" else "All"
             count = len([b for b in self.books if category == "All" or b.category == category])
-            attr = curses.A_REVERSE if self.focus == "categories" and idx == self.category_index else 0
+            attr = curses.color_pair(PAIR_SELECTION) if self.focus == "categories" and idx == self.category_index else 0
             draw_text(stdscr, row, 1, f"{label} ({count})", left_width - 2, attr)
 
         start = self.book_scroll
         for row, book in enumerate(visible[start : start + max_rows], start=4):
             idx = start + row - 4
-            attr = curses.A_REVERSE if self.focus == "books" and idx == self.book_index else 0
-            row_text = f"{book.title} - {book.author}" if book.author and book.author != "Unknown" else book.title
-            draw_text(stdscr, row, left_width + 2, row_text, right_width - 2, attr)
+            selected = self.focus == "books" and idx == self.book_index
+            draw_book_row(stdscr, row, left_width + 2, book, right_width - 2, selected)
 
+        stdscr.attron(curses.color_pair(PAIR_DIVIDER))
         stdscr.hline(detail_y - 1, left_width + 1, curses.ACS_HLINE, max(0, right_width - 1))
+        stdscr.attroff(curses.color_pair(PAIR_DIVIDER))
         if selected_book:
             book = selected_book
             cache_state = "cached" if cached_path(book).exists() else "not cached"
-            detail = f"{book.title} | {book.author} | {label_category(book.category)}"
-            draw_text(stdscr, detail_y, left_width + 2, detail, right_width - 2, curses.color_pair(4))
-            draw_text(stdscr, detail_y + 1, left_width + 2, f"Cache: {cache_state} | Source: {book.source}", right_width - 2, curses.color_pair(2))
+            category_label = label_category(book.category)
+            detail_title = truncate(book.title, max(0, right_width - len(book.author) - len(category_label) - 8))
+            detail_x = left_width + 2
+            draw_text(stdscr, detail_y, detail_x, detail_title, right_width - 2, curses.color_pair(PAIR_ACCENT))
+            detail_x += len(detail_title)
+            if book.author and book.author != "Unknown":
+                author_text = f" | {book.author}"
+                draw_text(stdscr, detail_y, detail_x, author_text, right_width - (detail_x - left_width), muted_attr(PAIR_AUTHOR))
+                detail_x += len(author_text)
+            category_text = f" | {category_label}"
+            draw_text(stdscr, detail_y, detail_x, category_text, right_width - (detail_x - left_width), muted_attr(PAIR_META))
+            draw_text(stdscr, detail_y + 1, left_width + 2, f"Cache: {cache_state} | Source: {book.source}", right_width - 2, muted_attr(PAIR_META))
             path_x = left_width + 2
             path_width = right_width - 2
             for offset, line in enumerate(textwrap.wrap(book.canonical_path, width=max(10, path_width))[:3], start=2):
-                draw_text(stdscr, detail_y + offset, path_x, line, path_width, curses.color_pair(2))
+                draw_text(stdscr, detail_y + offset, path_x, line, path_width, muted_attr(PAIR_META))
 
         status(stdscr, self.message)
 
@@ -302,11 +369,7 @@ class App:
 
 def main(stdscr: curses.window) -> None:
     curses.curs_set(0)
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    curses.init_pair(2, curses.COLOR_BLUE, -1)
-    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_CYAN)
-    curses.init_pair(4, curses.COLOR_GREEN, -1)
+    init_palette()
     stdscr.keypad(True)
     if not INDEX.exists():
         raise SystemExit(f"Missing {INDEX}. Run bookrefresh first.")
