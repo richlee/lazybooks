@@ -320,7 +320,7 @@ class App:
             while True:
                 key = self.stdscr.get_wch()
                 if key in ("\n", "\r") or key == curses.KEY_ENTER:
-                    self.query = value.strip()
+                    self.query = "" if pristine else value.strip()
                     self.book_index = 0
                     self.book_scroll = 0
                     self.set_message("Search updated" if self.query else "Search cleared")
