@@ -175,6 +175,8 @@ bookrefresh assurance
 bookrefresh --all
 ```
 
+`bookrefresh --all` attempts every configured library and reports any missing remote index folders. It returns non-zero if any library fails.
+
 This copies only:
 
 - `index.html`
