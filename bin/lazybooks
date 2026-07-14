@@ -25,7 +25,7 @@ PAIR_MODAL = 8
 PAIR_MODAL_BORDER = 9
 PAIR_SELECTED_TEXT = 10
 PAIR_SELECTED_AUTHOR = 11
-HELP_MESSAGE = "Enter: fetch/open  d: delete cache  Right/l: details  ?: about  1-9: library  /: search  Tab: pane  r: refresh  q: quit"
+HELP_MESSAGE = "Move: ↑/↓ | Pane: Tab | Search: / | Open: Enter | Details: →/l | Delete cache: d | Library: 1-9 | Refresh: r | About: ? | Quit: q/Esc"
 MESSAGE_TTL_SECONDS = 3.0
 
 

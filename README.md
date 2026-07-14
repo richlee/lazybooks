@@ -344,17 +344,17 @@ lazybooks
 
 Keys:
 
-- `Up` / `Down` or `k` / `j`: move
-- `Tab`: switch between categories and books
-- `/`: search within the current category
-- `c`: clear search
-- `Enter`: fetch and open selected book
-- `d`: delete the selected book's cached local copy
-- `Right` or `l`: show book details; any key closes the popover
-- `?`: show about, version, credits, contact, and tech stack
-- `1`-`9`: switch configured libraries
-- `r`: refresh manifest
-- `q` or `Esc`: quit
+- Move: `Up` / `Down` or `k` / `j`
+- Pane: `Tab`
+- Search: `/`
+- Clear search: `c`
+- Open: `Enter`
+- Details: `Right` or `l`
+- Delete cache: `d`
+- Library: `1`-`9`
+- Refresh: `r`
+- About: `?`
+- Quit: `q` or `Esc`
 
 PDFs are fetched into the configured cache, usually:
 
