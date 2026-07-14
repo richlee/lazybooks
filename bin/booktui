@@ -300,24 +300,55 @@ class App:
         status(stdscr, self.status_message())
 
     def prompt_search(self) -> None:
-        curses.echo()
+        curses.noecho()
         curses.curs_set(1)
         self.stdscr.timeout(-1)
         height, width = self.stdscr.getmaxyx()
-        self.stdscr.addstr(height - 1, 0, "Search: " + " " * (width - 9))
-        if self.query:
-            draw_text(self.stdscr, height - 1, 8, self.query, width - 9)
-        self.stdscr.refresh()
+        value = self.query
+        pristine = True
+        input_width = max(1, width - 9)
+
+        def redraw_prompt() -> None:
+            self.stdscr.addstr(height - 1, 0, "Search: " + " " * input_width)
+            draw_text(self.stdscr, height - 1, 8, value, input_width)
+            cursor_x = min(8 + len(value), width - 1)
+            self.stdscr.move(height - 1, cursor_x)
+            self.stdscr.refresh()
+
+        redraw_prompt()
         try:
-            value = self.stdscr.getstr(height - 1, 8, width - 9).decode()
-            self.query = value.strip()
-            self.book_index = 0
-            self.book_scroll = 0
-            self.set_message("Search updated" if self.query else "Search cleared")
+            while True:
+                key = self.stdscr.get_wch()
+                if key in ("\n", "\r") or key == curses.KEY_ENTER:
+                    self.query = value.strip()
+                    self.book_index = 0
+                    self.book_scroll = 0
+                    self.set_message("Search updated" if self.query else "Search cleared")
+                    break
+                if key == "\x1b":
+                    self.set_message("Search unchanged")
+                    break
+                if key in ("\b", "\x7f") or key == curses.KEY_BACKSPACE:
+                    if pristine:
+                        pristine = False
+                    value = value[:-1]
+                    redraw_prompt()
+                    continue
+                if key == "\x15":
+                    value = ""
+                    pristine = False
+                    redraw_prompt()
+                    continue
+                if isinstance(key, str) and key.isprintable():
+                    if pristine:
+                        value = ""
+                        pristine = False
+                    if len(value) < input_width:
+                        value += key
+                    redraw_prompt()
         except curses.error:
             self.set_message("Search unchanged")
         finally:
-            curses.noecho()
             curses.curs_set(0)
             self.stdscr.timeout(250)
 
