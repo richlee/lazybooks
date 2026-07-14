@@ -30,6 +30,7 @@ Optional:
 
 - `fzf` for `bookpick`
 - A Kitty graphics protocol-compatible terminal, such as Ghostty or Kitty, for `booktui` cover thumbnails
+- macOS `sips` for cover thumbnails when Calibre covers are JPEGs
 
 On macOS with Homebrew:
 
@@ -183,6 +184,12 @@ Cover thumbnails are fetched separately into:
 
 ```text
 ~/book-cache/covers
+```
+
+JPEG covers are converted to PNG for terminal rendering and cached under:
+
+```text
+~/book-cache/covers/rendered
 ```
 
 PDFs are fetched into:

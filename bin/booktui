@@ -18,6 +18,7 @@ from pathlib import Path
 INDEX = Path(os.environ.get("LAZYBOOKS_MANIFEST", "~/book-indexes/assurance/manifest.json")).expanduser()
 CACHE = Path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")).expanduser()
 COVER_CACHE = CACHE / "covers"
+RENDER_CACHE = COVER_CACHE / "rendered"
 LOCAL_ONEDRIVE_PREFIX = os.environ.get("LAZYBOOKS_LOCAL_PREFIX", str(Path.home() / "OneDrive") + "/")
 REMOTE = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
 
@@ -89,6 +90,20 @@ def cached_cover_path(book: Book) -> Path:
     name = re.sub(r"[/:]+", " - ", book.title)
     name = re.sub(r"\s+", " ", name).strip()
     return COVER_CACHE / f"{name}.jpg"
+
+
+def render_cover_path(book: Book) -> Path:
+    source = cached_cover_path(book)
+    target = RENDER_CACHE / f"{source.stem}.png"
+    if target.exists() and target.stat().st_mtime >= source.stat().st_mtime:
+        return target
+    RENDER_CACHE.mkdir(parents=True, exist_ok=True)
+    if source.suffix.casefold() == ".png":
+        return source
+    if sys.platform == "darwin":
+        subprocess.run(["sips", "-s", "format", "png", str(source), "--out", str(target)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return target
+    raise RuntimeError("Cover rendering needs PNG covers or macOS sips for conversion")
 
 
 def fetch_cover(book: Book) -> Path | None:
@@ -279,6 +294,7 @@ class App:
             cover = cached_cover_path(book)
             if not cover.exists():
                 return
+            cover = render_cover_path(book)
             self.stdscr.move(y, x)
             self.stdscr.refresh()
             kitty_draw_image(cover, columns=14, rows=6)
