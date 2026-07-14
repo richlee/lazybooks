@@ -33,15 +33,17 @@ def _local_prefix(value: str) -> str:
 def _fallback_library() -> list[LibraryConfig]:
     index_dir = _expand_path(os.environ.get("LAZYBOOKS_INDEX_DIR", "~/book-indexes/assurance"))
     manifest = _expand_path(os.environ.get("LAZYBOOKS_MANIFEST", str(index_dir / "manifest.json")))
+    remote = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
+    index_remote = os.environ.get("LAZYBOOKS_INDEX_REMOTE", f"{remote}Library/book-indexes/assurance")
     return [
         LibraryConfig(
             key="assurance",
             name=os.environ.get("LAZYBOOKS_TITLE", "Assurance"),
             manifest=manifest,
             index_dir=index_dir,
-            index_remote=os.environ.get("LAZYBOOKS_INDEX_REMOTE", "onedrive:Library/book-indexes/assurance"),
+            index_remote=index_remote,
             cache=_expand_path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")),
-            remote=os.environ.get("LAZYBOOKS_REMOTE", "onedrive:"),
+            remote=remote,
             local_prefix=_local_prefix(os.environ.get("LAZYBOOKS_LOCAL_PREFIX", "~/OneDrive/")),
         )
     ]

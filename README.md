@@ -105,6 +105,13 @@ export LAZYBOOKS_INDEX_REMOTE='onedrive:Library/book-indexes/assurance'
 export LAZYBOOKS_LOCAL_PREFIX='/path/to/local/OneDrive/'
 ```
 
+If your rclone remote has a different name, use that name instead:
+
+```sh
+export LAZYBOOKS_REMOTE='personal-onedrive:'
+export LAZYBOOKS_INDEX_REMOTE='personal-onedrive:Library/book-indexes/assurance'
+```
+
 `LAZYBOOKS_LOCAL_PREFIX` is important. It is the local path prefix stored in `manifest.json`; `lazybooks` rewrites that prefix to the `rclone` remote name when fetching files.
 
 For example:
@@ -142,6 +149,8 @@ name = "Personal"
 index_dir = "~/book-indexes/personal"
 index_remote = "onedrive:Library/book-indexes/personal"
 ```
+
+Set `remote` and each `index_remote` to match your actual `rclone config` remote name.
 
 Each library can also override `manifest`, `cache`, `remote`, and `local_prefix`. `manifest` defaults to `index_dir/manifest.json`.
 

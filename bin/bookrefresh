@@ -52,7 +52,16 @@ def main() -> int:
             selected = [libraries[default_index]]
 
     for library in selected:
-        refresh_library(library)
+        try:
+            refresh_library(library)
+        except subprocess.CalledProcessError as exc:
+            print(f"Refresh failed for {library.name}.", file=sys.stderr)
+            print(f"Tried remote index: {library.index_remote}", file=sys.stderr)
+            print("Check the rclone remote name in ~/.config/lazybooks/config.toml or LAZYBOOKS_REMOTE.", file=sys.stderr)
+            return exc.returncode
+        except Exception as exc:
+            print(f"Refresh failed for {library.name}: {exc}", file=sys.stderr)
+            return 1
 
     return 0
 
