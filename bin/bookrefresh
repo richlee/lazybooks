@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REMOTE="${LAZYBOOKS_INDEX_REMOTE:-onedrive:Library/book-indexes/assurance}"
+LOCAL="${LAZYBOOKS_INDEX_DIR:-$HOME/book-indexes/assurance}"
+
+mkdir -p "$LOCAL"
+
+rclone copy "$REMOTE" "$LOCAL" \
+  --filter "+ index.html" \
+  --filter "+ manifest.json" \
+  --filter "- *"
+
+echo "Refreshed lazybooks index:"
+echo "  $LOCAL/index.html"
+echo "  $LOCAL/manifest.json"

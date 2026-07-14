@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MANIFEST="${LAZYBOOKS_MANIFEST:-$HOME/book-indexes/assurance/manifest.json}"
+CACHE="${LAZYBOOKS_CACHE:-$HOME/book-cache}"
+REMOTE_PREFIX="${LAZYBOOKS_LOCAL_PREFIX:-$HOME/OneDrive/}"
+REMOTE_NAME="${LAZYBOOKS_REMOTE:-onedrive:}"
+
+if [[ ! -f "$MANIFEST" ]]; then
+  echo "Missing manifest: $MANIFEST"
+  echo "Run bookrefresh first."
+  exit 1
+fi
+
+if ! command -v fzf >/dev/null 2>&1; then
+  echo "fzf is not installed."
+  exit 1
+fi
+
+if ! command -v rclone >/dev/null 2>&1; then
+  echo "rclone is not installed."
+  exit 1
+fi
+
+selection="$(
+  python3 - <<'PY' "$MANIFEST"
+import json
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text())
+
+for i, book in enumerate(manifest["books"]):
+    title = book.get("title", "")
+    author = book.get("author", "")
+    category = book.get("category", "")
+    source = book.get("source", "")
+    path = book.get("canonical_path", "")
+    print(f"{i}\t{category}\t{title}\t{author}\t{source}\t{path}")
+PY
+)" || exit 1
+
+picked="$(
+  printf '%s\n' "$selection" |
+    fzf \
+      --delimiter=$'\t' \
+      --with-nth=2,3,4 \
+      --prompt='books> ' \
+      --header='Enter: fetch/open | type to filter' \
+      --preview='printf "Category: {2}\nTitle: {3}\nAuthor: {4}\nSource: {5}\n\nPath:\n{6}\n"' \
+      --preview-window=down,8
+)"
+
+[[ -n "$picked" ]] || exit 0
+
+IFS=$'\t' read -r _ category title author source canonical_path <<< "$picked"
+
+if [[ "$canonical_path" != "$REMOTE_PREFIX"* ]]; then
+  echo "Unsupported path:"
+  echo "$canonical_path"
+  exit 1
+fi
+
+remote_path="${REMOTE_NAME}${canonical_path#"$REMOTE_PREFIX"}"
+
+safe_title="$(
+  python3 - <<'PY' "$title"
+import re
+import sys
+
+name = re.sub(r"[/:]+", " - ", sys.argv[1])
+name = re.sub(r"\s+", " ", name).strip()
+print(name + ".pdf")
+PY
+)"
+
+mkdir -p "$CACHE"
+target="$CACHE/$safe_title"
+
+echo "Fetching:"
+echo "  $remote_path"
+echo "-> $target"
+
+rclone copyto "$remote_path" "$target"
+
+open "$target"

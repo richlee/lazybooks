@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import curses
+import base64
+import json
+import os
+import re
+import subprocess
+import sys
+import textwrap
+from dataclasses import dataclass
+from pathlib import Path
+
+
+INDEX = Path(os.environ.get("LAZYBOOKS_MANIFEST", "~/book-indexes/assurance/manifest.json")).expanduser()
+CACHE = Path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")).expanduser()
+COVER_CACHE = CACHE / "covers"
+LOCAL_ONEDRIVE_PREFIX = os.environ.get("LAZYBOOKS_LOCAL_PREFIX", str(Path.home() / "OneDrive") + "/")
+REMOTE = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
+
+
+@dataclass
+class Book:
+    title: str
+    author: str
+    category: str
+    source: str
+    canonical_path: str
+    cover_path: str
+
+
+def load_books() -> list[Book]:
+    data = json.loads(INDEX.read_text())
+    return [
+        Book(
+            title=item.get("title", ""),
+            author=item.get("author", "Unknown"),
+            category=item.get("category", ""),
+            source=item.get("source", ""),
+            canonical_path=item.get("canonical_path", ""),
+            cover_path=item.get("cover_path", ""),
+        )
+        for item in data["books"]
+    ]
+
+
+def label_category(category: str) -> str:
+    if category == "TOGAF":
+        return "TOGAF Reference"
+    return category.replace("-", " ").title()
+
+
+def safe_name(book: Book) -> str:
+    name = re.sub(r"[/:]+", " - ", book.title)
+    name = re.sub(r"\s+", " ", name).strip()
+    return f"{name}.pdf"
+
+
+def remote_path(canonical_path: str) -> str:
+    if not canonical_path.startswith(LOCAL_ONEDRIVE_PREFIX):
+        raise ValueError(f"Unsupported path: {canonical_path}")
+    return REMOTE + canonical_path[len(LOCAL_ONEDRIVE_PREFIX) :]
+
+
+def open_file(path: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
+    elif os.name == "nt":
+        os.startfile(path)  # type: ignore[attr-defined]
+    else:
+        subprocess.run(["xdg-open", str(path)], check=False)
+
+
+def fetch_book(book: Book) -> Path:
+    CACHE.mkdir(parents=True, exist_ok=True)
+    target = CACHE / safe_name(book)
+    subprocess.run(["rclone", "copyto", remote_path(book.canonical_path), str(target)], check=True)
+    return target
+
+
+def cached_path(book: Book) -> Path:
+    return CACHE / safe_name(book)
+
+
+def cached_cover_path(book: Book) -> Path:
+    name = re.sub(r"[/:]+", " - ", book.title)
+    name = re.sub(r"\s+", " ", name).strip()
+    return COVER_CACHE / f"{name}.jpg"
+
+
+def fetch_cover(book: Book) -> Path | None:
+    if not book.cover_path:
+        return None
+    target = cached_cover_path(book)
+    if target.exists():
+        return target
+    COVER_CACHE.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["rclone", "copyto", remote_path(book.cover_path), str(target)], check=True)
+    return target
+
+
+def kitty_delete_images() -> None:
+    sys.stdout.write("\033_Ga=d,d=A;\033\\")
+    sys.stdout.flush()
+
+
+def kitty_draw_image(path: Path, columns: int, rows: int) -> None:
+    encoded = base64.b64encode(str(path).encode()).decode()
+    sys.stdout.write(f"\033_Ga=T,f=100,t=f,c={columns},r={rows};{encoded}\033\\")
+    sys.stdout.flush()
+
+
+def truncate(value: str, width: int) -> str:
+    if width <= 0:
+        return ""
+    if len(value) <= width:
+        return value
+    if width <= 1:
+        return value[:width]
+    return value[: width - 1] + "…"
+
+
+def draw_text(win: curses.window, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
+    try:
+        win.addstr(y, x, truncate(text, width), attr)
+    except curses.error:
+        pass
+
+
+def status(stdscr: curses.window, message: str) -> None:
+    height, width = stdscr.getmaxyx()
+    stdscr.attron(curses.color_pair(3))
+    stdscr.addstr(height - 1, 0, " " * (width - 1))
+    draw_text(stdscr, height - 1, 0, message, width - 1, curses.color_pair(3))
+    stdscr.attroff(curses.color_pair(3))
+    stdscr.refresh()
+
+
+class App:
+    def __init__(self, stdscr: curses.window, books: list[Book]) -> None:
+        self.stdscr = stdscr
+        self.books = books
+        self.categories = self.build_categories()
+        self.category_index = 0
+        self.book_index = 0
+        self.focus = "books"
+        self.query = ""
+        self.show_thumbnail = False
+        self.message = "Enter: fetch/open  /: search  Tab: switch pane  t: thumbnail  r: refresh  q: quit"
+
+    def build_categories(self) -> list[str]:
+        cats = sorted({book.category for book in self.books}, key=lambda value: label_category(value).casefold())
+        return ["All"] + cats
+
+    def visible_books(self) -> list[Book]:
+        category = self.categories[self.category_index]
+        terms = [term.casefold() for term in self.query.split() if term.strip()]
+        result: list[Book] = []
+        for book in self.books:
+            if category != "All" and book.category != category:
+                continue
+            haystack = " ".join([book.title, book.author, book.category, book.source]).casefold()
+            if all(term in haystack for term in terms):
+                result.append(book)
+        return sorted(result, key=lambda book: book.title.casefold())
+
+    def draw(self) -> None:
+        stdscr = self.stdscr
+        kitty_delete_images()
+        stdscr.erase()
+        height, width = stdscr.getmaxyx()
+        left_width = max(22, min(34, width // 3))
+        right_width = width - left_width - 1
+        detail_height = 11 if self.show_thumbnail else 4
+
+        title = "Assurance Books"
+        query = f"Search: {self.query}" if self.query else "Search: "
+        draw_text(stdscr, 0, 0, title, width, curses.A_BOLD)
+        draw_text(stdscr, 1, 0, query, width, curses.color_pair(4))
+        stdscr.hline(2, 0, curses.ACS_HLINE, width - 1)
+        stdscr.vline(3, left_width, curses.ACS_VLINE, max(0, height - 5))
+
+        draw_text(stdscr, 3, 0, " Categories", left_width, curses.A_BOLD)
+        draw_text(stdscr, 3, left_width + 2, " Books", right_width, curses.A_BOLD)
+
+        for row, category in enumerate(self.categories[: max(0, height - 6)], start=4):
+            idx = row - 4
+            label = label_category(category) if category != "All" else "All"
+            count = len([b for b in self.books if category == "All" or b.category == category])
+            attr = curses.A_REVERSE if self.focus == "categories" and idx == self.category_index else 0
+            draw_text(stdscr, row, 1, f"{label} ({count})", left_width - 2, attr)
+
+        visible = self.visible_books()
+        if self.book_index >= len(visible):
+            self.book_index = max(0, len(visible) - 1)
+        max_rows = max(0, height - detail_height - 4)
+        start = 0
+        if self.book_index >= max_rows:
+            start = self.book_index - max_rows + 1
+        for row, book in enumerate(visible[start : start + max_rows], start=4):
+            idx = start + row - 4
+            attr = curses.A_REVERSE if self.focus == "books" and idx == self.book_index else 0
+            row_text = f"{book.title} - {book.author}" if book.author and book.author != "Unknown" else book.title
+            draw_text(stdscr, row, left_width + 2, row_text, right_width - 2, attr)
+
+        detail_y = height - detail_height
+        stdscr.hline(detail_y - 1, left_width + 1, curses.ACS_HLINE, max(0, right_width - 1))
+        if visible:
+            book = visible[self.book_index]
+            cache_state = "cached" if cached_path(book).exists() else "not cached"
+            cover_state = "cover cached" if book.cover_path and cached_cover_path(book).exists() else ("cover available" if book.cover_path else "no cover")
+            detail = f"{book.title} | {book.author} | {label_category(book.category)}"
+            draw_text(stdscr, detail_y, left_width + 2, detail, right_width - 2, curses.color_pair(4))
+            draw_text(stdscr, detail_y + 1, left_width + 2, f"Cache: {cache_state} | {cover_state} | Source: {book.source}", right_width - 2, curses.color_pair(2))
+            path_x = left_width + 2
+            path_width = right_width - 2
+            if self.show_thumbnail:
+                path_x = left_width + 18
+                path_width = right_width - 18
+                draw_text(stdscr, detail_y + 3, left_width + 2, "Cover preview", 14, curses.color_pair(4))
+                if not book.cover_path:
+                    draw_text(stdscr, detail_y + 5, left_width + 2, "No cover", 14, curses.color_pair(2))
+                else:
+                    draw_text(stdscr, detail_y + 5, left_width + 2, "Fetching...", 14, curses.color_pair(2))
+            for offset, line in enumerate(textwrap.wrap(book.canonical_path, width=max(10, path_width))[:3], start=2):
+                draw_text(stdscr, detail_y + offset, path_x, line, path_width, curses.color_pair(2))
+
+        status(stdscr, self.message)
+        if self.show_thumbnail and visible:
+            self.draw_thumbnail(visible[self.book_index], detail_y + 4, left_width + 2)
+
+    def draw_thumbnail(self, book: Book, y: int, x: int) -> None:
+        if not book.cover_path:
+            return
+        try:
+            cover = fetch_cover(book)
+            if not cover:
+                return
+            self.stdscr.move(y, x)
+            self.stdscr.refresh()
+            kitty_draw_image(cover, columns=14, rows=6)
+        except Exception as exc:
+            self.message = f"Cover failed: {exc}"
+
+    def prompt_search(self) -> None:
+        curses.echo()
+        height, width = self.stdscr.getmaxyx()
+        self.stdscr.addstr(height - 1, 0, "Search: " + " " * (width - 9))
+        self.stdscr.refresh()
+        try:
+            value = self.stdscr.getstr(height - 1, 8, width - 9).decode()
+            self.query = value.strip()
+            self.book_index = 0
+        except curses.error:
+            pass
+        finally:
+            curses.noecho()
+        self.message = "Search updated"
+
+    def open_selected(self) -> None:
+        visible = self.visible_books()
+        if not visible:
+            self.message = "No book selected"
+            return
+        book = visible[self.book_index]
+        self.message = f"Fetching {book.title}..."
+        self.draw()
+        try:
+            target = fetch_book(book)
+            self.message = f"Opened {target.name}"
+            open_file(target)
+        except Exception as exc:
+            self.message = f"Fetch failed: {exc}"
+
+    def refresh(self) -> None:
+        try:
+            subprocess.run(["bookrefresh"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.books = load_books()
+            self.categories = self.build_categories()
+            self.category_index = min(self.category_index, len(self.categories) - 1)
+            self.book_index = 0
+            self.message = "Index refreshed"
+        except Exception as exc:
+            self.message = f"Refresh failed: {exc}"
+
+    def run(self) -> None:
+        while True:
+            self.draw()
+            key = self.stdscr.getch()
+            visible = self.visible_books()
+            if key in (ord("q"), 27):
+                return
+            if key in (ord("\t"), 9):
+                self.focus = "categories" if self.focus == "books" else "books"
+            elif key in (curses.KEY_UP, ord("k")):
+                if self.focus == "categories":
+                    self.category_index = max(0, self.category_index - 1)
+                    self.book_index = 0
+                else:
+                    self.book_index = max(0, self.book_index - 1)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                if self.focus == "categories":
+                    self.category_index = min(len(self.categories) - 1, self.category_index + 1)
+                    self.book_index = 0
+                else:
+                    self.book_index = min(max(0, len(visible) - 1), self.book_index + 1)
+            elif key in (curses.KEY_PPAGE,):
+                self.book_index = max(0, self.book_index - 10)
+            elif key in (curses.KEY_NPAGE,):
+                self.book_index = min(max(0, len(visible) - 1), self.book_index + 10)
+            elif key in (curses.KEY_ENTER, 10, 13):
+                if self.focus == "categories":
+                    self.focus = "books"
+                    self.book_index = 0
+                else:
+                    self.open_selected()
+            elif key == ord("/"):
+                self.prompt_search()
+            elif key == ord("c"):
+                self.query = ""
+                self.book_index = 0
+                self.message = "Search cleared"
+            elif key == ord("r"):
+                self.refresh()
+            elif key == ord("t"):
+                self.show_thumbnail = not self.show_thumbnail
+                self.message = "Thumbnail preview on" if self.show_thumbnail else "Thumbnail preview off"
+
+
+def main(stdscr: curses.window) -> None:
+    curses.curs_set(0)
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(2, curses.COLOR_BLUE, -1)
+    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_CYAN)
+    curses.init_pair(4, curses.COLOR_GREEN, -1)
+    stdscr.keypad(True)
+    if not INDEX.exists():
+        raise SystemExit(f"Missing {INDEX}. Run bookrefresh first.")
+    App(stdscr, load_books()).run()
+
+
+if __name__ == "__main__":
+    curses.wrapper(main)

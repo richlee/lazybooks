@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+INDEX = Path(os.environ.get("LAZYBOOKS_MANIFEST", "~/book-indexes/assurance/manifest.json")).expanduser()
+CACHE = Path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")).expanduser()
+LOCAL_ONEDRIVE_PREFIX = os.environ.get("LAZYBOOKS_LOCAL_PREFIX", str(Path.home() / "OneDrive") + "/")
+REMOTE = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
+
+
+def remote_path(canonical_path: str) -> str:
+    if not canonical_path.startswith(LOCAL_ONEDRIVE_PREFIX):
+        raise ValueError(f"Unsupported path: {canonical_path}")
+    return REMOTE + canonical_path[len(LOCAL_ONEDRIVE_PREFIX):]
+
+
+def safe_name(book: dict) -> str:
+    name = re.sub(r"[/:]+", " - ", book["title"])
+    name = re.sub(r"\s+", " ", name).strip()
+    return f"{name}.pdf"
+
+
+def load_books() -> list[dict]:
+    return json.loads(INDEX.read_text())["books"]
+
+
+def matches(book: dict, terms: list[str]) -> bool:
+    haystack = " ".join(
+        [
+            book.get("title", ""),
+            book.get("author", ""),
+            book.get("category", ""),
+            book.get("source", ""),
+        ]
+    ).casefold()
+    return all(term.casefold() in haystack for term in terms)
+
+
+def open_file(path: Path) -> None:
+    if sys.platform == "darwin":
+        subprocess.run(["open", str(path)], check=False)
+    elif os.name == "nt":
+        os.startfile(path)  # type: ignore[attr-defined]
+    else:
+        subprocess.run(["xdg-open", str(path)], check=False)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Search the lazybooks manifest and fetch PDFs with rclone.")
+    parser.add_argument("terms", nargs="+", help="Search terms, all must match.")
+    parser.add_argument("-n", "--number", type=int, help="Fetch/open result number.")
+    parser.add_argument("--no-open", action="store_true", help="Download but do not open.")
+    args = parser.parse_args()
+
+    books = [book for book in load_books() if matches(book, args.terms)]
+    if not books:
+        print("No matches.")
+        return 1
+
+    for index, book in enumerate(books, 1):
+        print(f"{index:>2}. {book['title']} [{book['category']}]")
+        print(f"    {book.get('author', 'Unknown')}")
+        print(f"    {book.get('source', '')}")
+
+    if args.number is None:
+        print("\nFetch one with: bookfind <terms> -n <number>")
+        return 0
+
+    if args.number < 1 or args.number > len(books):
+        print(f"Invalid result number: {args.number}", file=sys.stderr)
+        return 2
+
+    book = books[args.number - 1]
+    CACHE.mkdir(parents=True, exist_ok=True)
+    target = CACHE / safe_name(book)
+    src = remote_path(book["canonical_path"])
+
+    print(f"\nFetching:\n  {src}\n-> {target}")
+    subprocess.run(["rclone", "copyto", src, str(target)], check=True)
+
+    if not args.no_open:
+        open_file(target)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
