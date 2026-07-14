@@ -116,7 +116,7 @@ def folder_category(root: Path, path: Path, library_name: str, category_depth: i
     return slug(" ".join(parts))
 
 
-def scan_books(root: Path, library_name: str, category_depth: int) -> list[Book]:
+def scan_books(root: Path, library_name: str, category_depth: int, calibre_metadata_only: bool) -> list[Book]:
     calibre_dirs = [path for path in root.rglob("metadata.db") if path.parent.is_dir()]
     calibre_books: dict[Path, Book] = {}
     calibre_roots: list[Path] = []
@@ -128,6 +128,9 @@ def scan_books(root: Path, library_name: str, category_depth: int) -> list[Book]
         calibre_books.update(load_calibre_books(library, category, source))
 
     books = dict(calibre_books)
+    if calibre_metadata_only:
+        return sorted(books.values(), key=lambda book: (book.category.casefold(), book.title.casefold()))
+
     for path in sorted(root.rglob("*.pdf"), key=lambda item: str(item).casefold()):
         if ".caltrash" in path.parts or ".calnotes" in path.parts:
             continue
@@ -222,9 +225,10 @@ def main() -> int:
     parser.add_argument("--title", required=True, help="Index title.")
     parser.add_argument("--library-name", required=True, help="Source label for non-Calibre PDFs.")
     parser.add_argument("--category-depth", type=int, default=1, help="Folder path depth to use for non-Calibre categories.")
+    parser.add_argument("--calibre-metadata-only", action="store_true", help="Only index PDFs referenced by Calibre metadata.db files.")
     args = parser.parse_args()
 
-    books = scan_books(args.root, args.library_name, max(1, args.category_depth))
+    books = scan_books(args.root, args.library_name, max(1, args.category_depth), args.calibre_metadata_only)
     write_index(args.index_dir, args.title, books)
     write_manifest(args.index_dir, books)
     print(json.dumps({"books": len(books), "index": str(args.index_dir / "index.html"), "manifest": str(args.index_dir / "manifest.json")}, indent=2))

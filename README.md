@@ -187,19 +187,20 @@ It does not copy PDFs.
 
 ## Build an index
 
-For a folder-backed library:
+For a Calibre-backed library:
 
 ```sh
 bookindex \
-  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech" \
+  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre" \
   --index-dir "$HOME/book-indexes/tech" \
   --title "Tech Books" \
-  --library-name Tech
+  --library-name Tech \
+  --calibre-metadata-only
 ```
 
 `bookindex` scans PDFs recursively. If it finds a Calibre `metadata.db`, it uses Calibre title, author, and tag metadata for those PDFs.
 
-For folder-backed libraries with broad top-level folders, use more path depth for categories:
+For non-Calibre folder-backed libraries with broad top-level folders, use more path depth for categories:
 
 ```sh
 bookindex \
