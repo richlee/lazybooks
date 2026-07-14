@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import curses
 import base64
+from concurrent.futures import Future, ThreadPoolExecutor
 import json
 import os
 import re
@@ -148,6 +149,8 @@ class App:
         self.focus = "books"
         self.query = ""
         self.show_thumbnail = False
+        self.cover_executor = ThreadPoolExecutor(max_workers=1)
+        self.cover_jobs: dict[str, Future[Path | None]] = {}
         self.message = "Enter: fetch/open  /: search  Tab: switch pane  t: thumbnail  r: refresh  q: quit"
 
     def build_categories(self) -> list[str]:
@@ -222,7 +225,10 @@ class App:
                 draw_text(stdscr, detail_y + 3, left_width + 2, "Cover preview", 14, curses.color_pair(4))
                 if not book.cover_path:
                     draw_text(stdscr, detail_y + 5, left_width + 2, "No cover", 14, curses.color_pair(2))
+                elif cached_cover_path(book).exists():
+                    draw_text(stdscr, detail_y + 5, left_width + 2, "Cached", 14, curses.color_pair(2))
                 else:
+                    self.ensure_cover_fetch(book)
                     draw_text(stdscr, detail_y + 5, left_width + 2, "Fetching...", 14, curses.color_pair(2))
             for offset, line in enumerate(textwrap.wrap(book.canonical_path, width=max(10, path_width))[:3], start=2):
                 draw_text(stdscr, detail_y + offset, path_x, line, path_width, curses.color_pair(2))
@@ -231,12 +237,27 @@ class App:
         if self.show_thumbnail and visible:
             self.draw_thumbnail(visible[self.book_index], detail_y + 4, left_width + 2)
 
+    def ensure_cover_fetch(self, book: Book) -> None:
+        if not book.cover_path or cached_cover_path(book).exists():
+            return
+        key = book.cover_path
+        job = self.cover_jobs.get(key)
+        if job and not job.done():
+            return
+        if job and job.done():
+            try:
+                job.result()
+            except Exception as exc:
+                self.message = f"Cover failed: {exc}"
+            return
+        self.cover_jobs[key] = self.cover_executor.submit(fetch_cover, book)
+
     def draw_thumbnail(self, book: Book, y: int, x: int) -> None:
         if not book.cover_path:
             return
         try:
-            cover = fetch_cover(book)
-            if not cover:
+            cover = cached_cover_path(book)
+            if not cover.exists():
                 return
             self.stdscr.move(y, x)
             self.stdscr.refresh()
@@ -286,11 +307,15 @@ class App:
             self.message = f"Refresh failed: {exc}"
 
     def run(self) -> None:
+        self.stdscr.timeout(250)
         while True:
             self.draw()
             key = self.stdscr.getch()
             visible = self.visible_books()
+            if key == -1:
+                continue
             if key in (ord("q"), 27):
+                self.cover_executor.shutdown(wait=False, cancel_futures=True)
                 return
             if key in (ord("\t"), 9):
                 self.focus = "categories" if self.focus == "books" else "books"
