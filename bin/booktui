@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import curses
-import base64
-from concurrent.futures import Future, ThreadPoolExecutor
 import json
 import os
 import re
@@ -17,12 +15,8 @@ from pathlib import Path
 
 INDEX = Path(os.environ.get("LAZYBOOKS_MANIFEST", "~/book-indexes/assurance/manifest.json")).expanduser()
 CACHE = Path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")).expanduser()
-COVER_CACHE = CACHE / "covers"
-RENDER_CACHE = COVER_CACHE / "rendered"
 LOCAL_ONEDRIVE_PREFIX = os.environ.get("LAZYBOOKS_LOCAL_PREFIX", str(Path.home() / "OneDrive") + "/")
 REMOTE = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
-THUMBNAIL_COLUMNS = 10
-THUMBNAIL_ROWS = 9
 
 
 @dataclass
@@ -32,7 +26,6 @@ class Book:
     category: str
     source: str
     canonical_path: str
-    cover_path: str
 
 
 def load_books() -> list[Book]:
@@ -44,7 +37,6 @@ def load_books() -> list[Book]:
             category=item.get("category", ""),
             source=item.get("source", ""),
             canonical_path=item.get("canonical_path", ""),
-            cover_path=item.get("cover_path", ""),
         )
         for item in data["books"]
     ]
@@ -88,48 +80,6 @@ def cached_path(book: Book) -> Path:
     return CACHE / safe_name(book)
 
 
-def cached_cover_path(book: Book) -> Path:
-    name = re.sub(r"[/:]+", " - ", book.title)
-    name = re.sub(r"\s+", " ", name).strip()
-    return COVER_CACHE / f"{name}.jpg"
-
-
-def render_cover_path(book: Book) -> Path:
-    source = cached_cover_path(book)
-    target = RENDER_CACHE / f"{source.stem}.png"
-    if target.exists() and target.stat().st_mtime >= source.stat().st_mtime:
-        return target
-    RENDER_CACHE.mkdir(parents=True, exist_ok=True)
-    if source.suffix.casefold() == ".png":
-        return source
-    if sys.platform == "darwin":
-        subprocess.run(["sips", "-s", "format", "png", str(source), "--out", str(target)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return target
-    raise RuntimeError("Cover rendering needs PNG covers or macOS sips for conversion")
-
-
-def fetch_cover(book: Book) -> Path | None:
-    if not book.cover_path:
-        return None
-    target = cached_cover_path(book)
-    if target.exists():
-        return target
-    COVER_CACHE.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["rclone", "copyto", remote_path(book.cover_path), str(target)], check=True)
-    return target
-
-
-def kitty_delete_images() -> None:
-    sys.stdout.write("\033_Ga=d,d=A;\033\\")
-    sys.stdout.flush()
-
-
-def kitty_draw_image(path: Path, columns: int, rows: int) -> None:
-    encoded = base64.b64encode(str(path).encode()).decode()
-    sys.stdout.write(f"\033_Ga=T,f=100,t=f,c={columns},r={rows};{encoded}\033\\")
-    sys.stdout.flush()
-
-
 def truncate(value: str, width: int) -> str:
     if width <= 0:
         return ""
@@ -166,13 +116,7 @@ class App:
         self.book_scroll = 0
         self.focus = "books"
         self.query = ""
-        self.requested_cover_path: str | None = None
-        self.cover_executor = ThreadPoolExecutor(max_workers=1)
-        self.cover_jobs: dict[str, Future[Path | None]] = {}
-        self.cover_errors: dict[str, str] = {}
-        self.rendered_cover_key: str | None = None
-        self.last_layout_key: tuple[int, int, int] | None = None
-        self.message = "Enter: fetch/open  /: search  Tab: switch pane  t: fetch cover  r: refresh  q: quit"
+        self.message = "Enter: fetch/open  /: search  Tab: switch pane  r: refresh  q: quit"
 
     def build_categories(self) -> list[str]:
         cats = sorted({book.category for book in self.books}, key=lambda value: label_category(value).casefold())
@@ -212,10 +156,7 @@ class App:
         left_width = max(22, min(34, width // 3))
         right_width = width - left_width - 1
         visible = self.visible_books()
-        self.clamp_book_view(len(visible), max(0, height - 4 - 5))
-        selected_book = visible[self.book_index] if visible else None
-        thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
-        detail_height = 14 if thumbnail_active else 4
+        detail_height = 4
 
         title = "Assurance Books"
         query = f"Search: {self.query}" if self.query else "Search: "
@@ -223,28 +164,8 @@ class App:
         max_rows = max(0, height - detail_height - 5)
         self.clamp_book_view(len(visible), max_rows)
         selected_book = visible[self.book_index] if visible else None
-        updated_thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
-        updated_detail_height = 14 if updated_thumbnail_active else 4
-        if updated_detail_height != detail_height:
-            detail_height = updated_detail_height
-            max_rows = max(0, height - detail_height - 5)
-            self.clamp_book_view(len(visible), max_rows)
-            selected_book = visible[self.book_index] if visible else None
-            thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
-        else:
-            thumbnail_active = updated_thumbnail_active
         detail_y = height - detail_height
-        thumbnail_y = detail_y + 5
-        thumbnail_x = left_width + 2
-        desired_cover_key = self.thumbnail_render_key(selected_book, thumbnail_y, thumbnail_x) if selected_book and thumbnail_active else None
-        if self.rendered_cover_key and self.rendered_cover_key != desired_cover_key:
-            self.clear_thumbnail()
-        layout_key = (height, width, detail_y)
-        if layout_key != self.last_layout_key:
-            stdscr.clear()
-            self.last_layout_key = layout_key
-        else:
-            stdscr.erase()
+        stdscr.erase()
 
         draw_text(stdscr, 0, 0, title, width, curses.A_BOLD)
         draw_text(stdscr, 1, 0, query, width, curses.color_pair(4))
@@ -272,105 +193,17 @@ class App:
         if selected_book:
             book = selected_book
             cache_state = "cached" if cached_path(book).exists() else "not cached"
-            cover_state = self.cover_state(book)
             detail = f"{book.title} | {book.author} | {label_category(book.category)}"
             draw_text(stdscr, detail_y, left_width + 2, detail, right_width - 2, curses.color_pair(4))
-            draw_text(stdscr, detail_y + 1, left_width + 2, f"Cache: {cache_state} | {cover_state} | Source: {book.source}", right_width - 2, curses.color_pair(2))
+            draw_text(stdscr, detail_y + 1, left_width + 2, f"Cache: {cache_state} | Source: {book.source}", right_width - 2, curses.color_pair(2))
             path_x = left_width + 2
             path_width = right_width - 2
-            if thumbnail_active:
-                path_x = left_width + 15
-                path_width = right_width - 15
-                draw_text(stdscr, detail_y + 3, left_width + 2, "Cover preview", 14, curses.color_pair(4))
-                if not book.cover_path:
-                    draw_text(stdscr, detail_y + 4, left_width + 2, "No cover", 14, curses.color_pair(2))
-                elif cached_cover_path(book).exists():
-                    draw_text(stdscr, detail_y + 4, left_width + 2, "Cached", 14, curses.color_pair(2))
-                elif book.cover_path in self.cover_errors:
-                    draw_text(stdscr, detail_y + 4, left_width + 2, "Failed", 14, curses.color_pair(2))
-                else:
-                    self.ensure_cover_fetch(book)
-                    draw_text(stdscr, detail_y + 4, left_width + 2, "Fetching...", 14, curses.color_pair(2))
             for offset, line in enumerate(textwrap.wrap(book.canonical_path, width=max(10, path_width))[:3], start=2):
                 draw_text(stdscr, detail_y + offset, path_x, line, path_width, curses.color_pair(2))
 
         status(stdscr, self.message)
-        if selected_book and thumbnail_active:
-            self.draw_thumbnail(selected_book, thumbnail_y, thumbnail_x)
-        else:
-            self.clear_thumbnail()
-
-    def thumbnail_active(self, book: Book) -> bool:
-        return cached_cover_path(book).exists() or bool(book.cover_path and self.requested_cover_path == book.cover_path)
-
-    def cover_state(self, book: Book) -> str:
-        if not book.cover_path:
-            return "no cover"
-        if cached_cover_path(book).exists():
-            return "cover cached"
-        if book.cover_path in self.cover_errors:
-            return "cover failed"
-        if self.requested_cover_path == book.cover_path:
-            return "cover fetching"
-        return "cover available"
-
-    def ensure_cover_fetch(self, book: Book) -> None:
-        if not book.cover_path or cached_cover_path(book).exists():
-            return
-        key = book.cover_path
-        job = self.cover_jobs.get(key)
-        if job and not job.done():
-            return
-        if job and job.done():
-            try:
-                job.result()
-            except Exception as exc:
-                self.cover_errors[key] = str(exc)
-                self.message = f"Cover failed: {exc}"
-            return
-        self.cover_jobs[key] = self.cover_executor.submit(fetch_cover, book)
-
-    def clear_thumbnail(self) -> None:
-        if self.rendered_cover_key is not None:
-            kitty_delete_images()
-            self.rendered_cover_key = None
-
-    def thumbnail_render_key(self, book: Book | None, y: int, x: int) -> str | None:
-        if not book or not book.cover_path:
-            return None
-        cover = cached_cover_path(book)
-        if not cover.exists():
-            return None
-        try:
-            cover = render_cover_path(book)
-        except Exception:
-            return None
-        return f"{cover}:{y}:{x}:{THUMBNAIL_COLUMNS}:{THUMBNAIL_ROWS}"
-
-    def draw_thumbnail(self, book: Book, y: int, x: int) -> None:
-        if not book.cover_path:
-            self.clear_thumbnail()
-            return
-        try:
-            cover = cached_cover_path(book)
-            if not cover.exists():
-                self.clear_thumbnail()
-                return
-            cover = render_cover_path(book)
-            render_key = f"{cover}:{y}:{x}:{THUMBNAIL_COLUMNS}:{THUMBNAIL_ROWS}"
-            if render_key == self.rendered_cover_key:
-                return
-            self.clear_thumbnail()
-            self.stdscr.move(y, x)
-            self.stdscr.refresh()
-            kitty_draw_image(cover, columns=THUMBNAIL_COLUMNS, rows=THUMBNAIL_ROWS)
-            self.rendered_cover_key = render_key
-        except Exception as exc:
-            self.clear_thumbnail()
-            self.message = f"Cover failed: {exc}"
 
     def prompt_search(self) -> None:
-        self.clear_thumbnail()
         curses.echo()
         height, width = self.stdscr.getmaxyx()
         self.stdscr.addstr(height - 1, 0, "Search: " + " " * (width - 9))
@@ -392,7 +225,6 @@ class App:
             self.message = "No book selected"
             return
         book = visible[self.book_index]
-        self.clear_thumbnail()
         self.message = f"Fetching {book.title}..."
         self.draw()
         try:
@@ -403,7 +235,6 @@ class App:
             self.message = f"Fetch failed: {exc}"
 
     def refresh(self) -> None:
-        self.clear_thumbnail()
         try:
             subprocess.run(["bookrefresh"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             self.books = load_books()
@@ -424,8 +255,6 @@ class App:
             if key == -1:
                 continue
             if key in (ord("q"), 27):
-                self.clear_thumbnail()
-                self.cover_executor.shutdown(wait=False, cancel_futures=True)
                 return
             if key in (ord("\t"), 9):
                 self.focus = "categories" if self.focus == "books" else "books"
@@ -463,19 +292,6 @@ class App:
                 self.message = "Search cleared"
             elif key == ord("r"):
                 self.refresh()
-            elif key == ord("t"):
-                if visible:
-                    book = visible[self.book_index]
-                    if not book.cover_path:
-                        self.message = "No cover for selected book"
-                    else:
-                        self.requested_cover_path = book.cover_path
-                        if cached_cover_path(book).exists():
-                            self.message = "Cover already cached"
-                        else:
-                            self.cover_errors.pop(book.cover_path, None)
-                            self.ensure_cover_fetch(book)
-                            self.message = f"Fetching cover for {book.title}"
 
 
 def main(stdscr: curses.window) -> None:

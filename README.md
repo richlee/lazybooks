@@ -9,14 +9,14 @@ The core workflow is:
 1. Generate `index.html` and `manifest.json` somewhere in OneDrive.
 2. Use `rclone` to refresh the small local manifest cache.
 3. Browse/search locally.
-4. Fetch one selected PDF or cover image on demand.
+4. Fetch one selected PDF on demand.
 
 ## Commands
 
 - `bookrefresh`: copies `index.html` and `manifest.json` from OneDrive into a local cache.
 - `bookfind`: searches the manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
-- `booktui`: full terminal UI with categories, search, cache state, PDF fetch/open, and optional cover thumbnails.
+- `booktui`: full terminal UI with categories, search, cache state, and PDF fetch/open.
 
 ## Dependencies
 
@@ -29,8 +29,6 @@ Required:
 Optional:
 
 - `fzf` for `bookpick`
-- A Kitty graphics protocol-compatible terminal, such as Ghostty or Kitty, for `booktui` cover thumbnails
-- macOS `sips` for cover thumbnails when Calibre covers are JPEGs
 
 On macOS with Homebrew:
 
@@ -176,21 +174,8 @@ Keys:
 - `/`: search
 - `c`: clear search
 - `Enter`: fetch and open selected book
-- `t`: toggle cover thumbnail preview
 - `r`: refresh manifest
 - `q` or `Esc`: quit
-
-Cover thumbnails are fetched separately into:
-
-```text
-~/book-cache/covers
-```
-
-JPEG covers are converted to PNG for terminal rendering and cached under:
-
-```text
-~/book-cache/covers/rendered
-```
 
 PDFs are fetched into:
 
@@ -211,7 +196,6 @@ PDFs are fetched into:
       "author": "Dan Bergh Johnsson, Daniel Deogun, Daniel Sawano",
       "category": "security-reliability",
       "canonical_path": "/path/to/local/OneDrive/Library/assurance/assurance-library-calibre/.../Secure by Design.pdf",
-      "cover_path": "/path/to/local/OneDrive/Library/assurance/assurance-library-calibre/.../cover.jpg",
       "source": "Assurance Calibre"
     }
   ]
@@ -226,7 +210,7 @@ Additional fields are ignored.
 
 - It does not modify Calibre metadata.
 - It does not write to OneDrive except through `rclone copy` in `bookrefresh`, which copies from OneDrive to local.
-- It fetches selected PDFs/covers into a local cache.
+- It fetches selected PDFs into a local cache.
 - It avoids using a remote mount for Calibre's `metadata.db`.
 
 This avoids the common failure mode of editing a SQLite-backed Calibre library over a cloud or API-backed filesystem.
