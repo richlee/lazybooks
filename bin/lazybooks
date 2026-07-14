@@ -25,7 +25,7 @@ PAIR_MODAL = 8
 PAIR_MODAL_BORDER = 9
 PAIR_SELECTED_TEXT = 10
 PAIR_SELECTED_AUTHOR = 11
-HELP_MESSAGE = "Enter: fetch/open  d: delete cache  Right/l: details  1-9: library  /: search  Tab: pane  r: refresh  q: quit"
+HELP_MESSAGE = "Enter: fetch/open  d: delete cache  Right/l: details  ?: about  1-9: library  /: search  Tab: pane  r: refresh  q: quit"
 MESSAGE_TTL_SECONDS = 3.0
 
 
@@ -88,6 +88,30 @@ def fetch_book(book: Book, library: LibraryConfig) -> Path:
 
 def cached_path(book: Book, library: LibraryConfig) -> Path:
     return library.cache / safe_name(book)
+
+
+def app_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def git_value(*args: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(app_root()), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return "unknown"
+    return result.stdout.strip() or "unknown"
+
+
+def version_info() -> tuple[str, str]:
+    return (
+        git_value("rev-parse", "--short", "HEAD"),
+        git_value("show", "-s", "--format=%cs", "HEAD"),
+    )
 
 
 def truncate(value: str, width: int) -> str:
@@ -558,6 +582,68 @@ class App:
             self.stdscr.timeout(250)
         self.set_message("Details closed")
 
+    def show_about(self) -> None:
+        self.draw()
+        height, width = self.stdscr.getmaxyx()
+        commit, commit_date = version_info()
+        modal_width = min(max(58, width // 2), max(24, width - 4))
+        modal_height = min(18, max(10, height - 4))
+        modal_x = max(0, (width - modal_width) // 2)
+        modal_y = max(1, (height - modal_height) // 2)
+        body_width = max(1, modal_width - 4)
+        modal_attr = curses.color_pair(PAIR_MODAL)
+        border_attr = curses.color_pair(PAIR_MODAL_BORDER)
+
+        lines: list[tuple[str, int]] = [
+            ("lazybooks", curses.A_BOLD | curses.color_pair(PAIR_ACCENT)),
+            ("", 0),
+            ("Lazy terminal access to cloud-hosted book libraries.", muted_attr(PAIR_META)),
+            ("", 0),
+            (f"Version: {commit}", muted_attr(PAIR_META)),
+            (f"Commit date: {commit_date}", muted_attr(PAIR_META)),
+            ("License: MIT", muted_attr(PAIR_META)),
+            ("", 0),
+            ("Created by Rich Lee, LeeSoft", muted_attr(PAIR_META)),
+            ("Contact: Rich Lee <richalee@pm.me>", muted_attr(PAIR_META)),
+            ("Built with OpenAI Codex", muted_attr(PAIR_META)),
+            ("", 0),
+            ("Tech stack: Python, curses, rclone, JSON manifests, Calibre SQLite metadata, OneDrive, optional fzf.", muted_attr(PAIR_META)),
+        ]
+
+        try:
+            for row in range(modal_height):
+                self.stdscr.addstr(modal_y + row, modal_x, " " * modal_width, modal_attr)
+            self.stdscr.hline(modal_y, modal_x + 1, curses.ACS_HLINE, modal_width - 2, border_attr)
+            self.stdscr.hline(modal_y + modal_height - 1, modal_x + 1, curses.ACS_HLINE, modal_width - 2, border_attr)
+            self.stdscr.vline(modal_y + 1, modal_x, curses.ACS_VLINE, modal_height - 2, border_attr)
+            self.stdscr.vline(modal_y + 1, modal_x + modal_width - 1, curses.ACS_VLINE, modal_height - 2, border_attr)
+            self.stdscr.addch(modal_y, modal_x, curses.ACS_ULCORNER, border_attr)
+            self.stdscr.addch(modal_y, modal_x + modal_width - 1, curses.ACS_URCORNER, border_attr)
+            self.stdscr.addch(modal_y + modal_height - 1, modal_x, curses.ACS_LLCORNER, border_attr)
+            self.stdscr.addch(modal_y + modal_height - 1, modal_x + modal_width - 1, curses.ACS_LRCORNER, border_attr)
+        except curses.error:
+            pass
+
+        row = 1
+        for line, attr in lines:
+            wrapped = textwrap.wrap(line, width=body_width) if line else [""]
+            for wrapped_line in wrapped:
+                if row >= modal_height - 2:
+                    break
+                draw_text(self.stdscr, modal_y + row, modal_x + 2, wrapped_line, body_width, attr or modal_attr)
+                row += 1
+            if row >= modal_height - 2:
+                break
+        draw_text(self.stdscr, modal_y + modal_height - 2, modal_x + 2, "Any key to close", body_width, muted_attr(PAIR_META))
+        self.stdscr.refresh()
+
+        self.stdscr.timeout(-1)
+        try:
+            self.stdscr.getch()
+        finally:
+            self.stdscr.timeout(250)
+        self.set_message("About closed")
+
     def switch_library(self, library_index: int) -> None:
         if library_index < 0 or library_index >= len(self.libraries):
             return
@@ -622,6 +708,8 @@ class App:
                     self.show_details(visible[self.book_index])
                 else:
                     self.set_message("No book selected")
+            elif key == ord("?"):
+                self.show_about()
             elif key == ord("/"):
                 self.prompt_search()
             elif key == ord("c"):

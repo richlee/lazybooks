@@ -350,6 +350,7 @@ Keys:
 - `Enter`: fetch and open selected book
 - `d`: delete the selected book's cached local copy
 - `Right` or `l`: show book details; any key closes the popover
+- `?`: show about, version, credits, contact, and tech stack
 - `1`-`9`: switch configured libraries
 - `r`: refresh manifest
 - `q` or `Esc`: quit
@@ -426,6 +427,10 @@ Additional fields are ignored.
 - Publishing indexes with `rclone copy` writes only `index.html` and `manifest.json` when the filters above are used.
 - `booktaxonomy --apply` modifies Calibre tags, but creates a timestamped `metadata.db.lazybooks-backup-*` first.
 - Avoid editing a Calibre SQLite database through a remote mount. Use a real local/synced filesystem for Calibre metadata operations.
+
+## License
+
+`lazybooks` is released under the MIT License. See `LICENSE`.
 
 ## Troubleshooting
 
