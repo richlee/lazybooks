@@ -108,7 +108,15 @@ def load_calibre_books(library: Path, category: str, source: str) -> dict[Path, 
     return books
 
 
-def scan_books(root: Path, library_name: str) -> list[Book]:
+def folder_category(root: Path, path: Path, library_name: str, category_depth: int) -> str:
+    rel = path.relative_to(root)
+    if len(rel.parts) <= 1:
+        return slug(library_name)
+    parts = rel.parts[: max(1, min(category_depth, len(rel.parts) - 1))]
+    return slug(" ".join(parts))
+
+
+def scan_books(root: Path, library_name: str, category_depth: int) -> list[Book]:
     calibre_dirs = [path for path in root.rglob("metadata.db") if path.parent.is_dir()]
     calibre_books: dict[Path, Book] = {}
     calibre_roots: list[Path] = []
@@ -127,8 +135,7 @@ def scan_books(root: Path, library_name: str) -> list[Book]:
         if resolved in books:
             continue
         title, author = parse_title_author(path)
-        rel = path.relative_to(root)
-        category = slug(rel.parts[0]) if len(rel.parts) > 1 else slug(library_name)
+        category = folder_category(root, path, library_name, category_depth)
         books[resolved] = Book(
             title=title,
             author=author,
@@ -214,9 +221,10 @@ def main() -> int:
     parser.add_argument("--index-dir", required=True, type=Path, help="Output directory.")
     parser.add_argument("--title", required=True, help="Index title.")
     parser.add_argument("--library-name", required=True, help="Source label for non-Calibre PDFs.")
+    parser.add_argument("--category-depth", type=int, default=1, help="Folder path depth to use for non-Calibre categories.")
     args = parser.parse_args()
 
-    books = scan_books(args.root, args.library_name)
+    books = scan_books(args.root, args.library_name, max(1, args.category_depth))
     write_index(args.index_dir, args.title, books)
     write_manifest(args.index_dir, books)
     print(json.dumps({"books": len(books), "index": str(args.index_dir / "index.html"), "manifest": str(args.index_dir / "manifest.json")}, indent=2))

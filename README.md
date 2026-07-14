@@ -199,6 +199,17 @@ bookindex \
 
 `bookindex` scans PDFs recursively. If it finds a Calibre `metadata.db`, it uses Calibre title, author, and tag metadata for those PDFs.
 
+For folder-backed libraries with broad top-level folders, use more path depth for categories:
+
+```sh
+bookindex \
+  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/personal" \
+  --index-dir "$HOME/book-indexes/personal" \
+  --title "Personal Books" \
+  --library-name Personal \
+  --category-depth 2
+```
+
 ## Search from the CLI
 
 List matches:
