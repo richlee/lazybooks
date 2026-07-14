@@ -18,6 +18,7 @@ The core workflow is:
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
 - `booktui`: full terminal UI with categories, search, cache state, and PDF fetch/open.
 - `bookindex`: builds `index.html` and `manifest.json` for a folder of PDFs.
+- `booktaxonomy`: proposes cleaner review categories for Calibre-backed libraries.
 
 ## Dependencies
 
@@ -210,6 +211,27 @@ bookindex \
   --library-name Personal \
   --category-depth 2
 ```
+
+## Review taxonomy
+
+`booktaxonomy` reads the refreshed manifests, finds the local Calibre `metadata.db`
+files behind those books, and writes review-only taxonomy proposals:
+
+```sh
+booktaxonomy
+booktaxonomy tech personal
+```
+
+Output goes to:
+
+- `reports/taxonomy-proposal.md`
+- `reports/tech-taxonomy-proposal.csv`
+- `reports/personal-taxonomy-proposal.csv`
+
+It does not update Calibre tags or rebuild manifests. The intent is to replace
+noisy first-tag categories such as `self`, `personal`, `tech`, `unknown`, and
+`MEAP Vnn` with a smaller browsing taxonomy, while keeping unclear/scanned items
+in a manual-review bucket.
 
 ## Search from the CLI
 

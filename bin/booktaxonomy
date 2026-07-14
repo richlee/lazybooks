@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import re
+import sqlite3
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
+
+from lazybooks_config import LibraryConfig, load_libraries
+
+
+NOISY_TAGS = {
+    "",
+    "books",
+    "book",
+    "ebook",
+    "ebooks",
+    "pdf",
+    "pdf image",
+    "personal",
+    "self",
+    "tech",
+    "unknown",
+}
+
+
+@dataclass(frozen=True)
+class MetadataBook:
+    library: str
+    title: str
+    authors: str
+    tags: str
+    comments: str
+    canonical_path: str
+
+
+@dataclass(frozen=True)
+class Proposal:
+    book: MetadataBook
+    category: str
+    confidence: str
+    reason: str
+
+
+def normalize(value: str) -> str:
+    value = re.sub(r"<[^>]+>", " ", value)
+    value = value.replace("%2B", " ").replace("_", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", value).strip().casefold()
+
+
+def split_tags(value: str) -> list[str]:
+    return [tag.strip() for tag in value.split(",") if tag.strip()]
+
+
+def useful_tags(value: str) -> list[str]:
+    tags = []
+    for tag in split_tags(value):
+        key = normalize(tag)
+        if key in NOISY_TAGS or re.fullmatch(r"meap v?\d+", key):
+            continue
+        if key.startswith("team "):
+            continue
+        tags.append(tag)
+    return tags
+
+
+def clean_author(value: str) -> str:
+    parts = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"[,|;]", value or "")]
+    seen: set[str] = set()
+    authors: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        key = part.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        authors.append(part)
+    return ", ".join(authors) or "Unknown"
+
+
+def find_calibre_root(path: Path) -> Path | None:
+    for parent in [path.parent, *path.parents]:
+        if (parent / "metadata.db").exists():
+            return parent
+    return None
+
+
+def load_db_books(library: LibraryConfig) -> list[MetadataBook]:
+    if not library.manifest.exists():
+        return []
+
+    manifest = json.loads(library.manifest.read_text())
+    roots = {
+        root
+        for item in manifest.get("books", [])
+        if (root := find_calibre_root(Path(str(item.get("canonical_path", "")))))
+    }
+
+    books: list[MetadataBook] = []
+    for root in sorted(roots, key=lambda path: str(path).casefold()):
+        with sqlite3.connect(root / "metadata.db") as conn:
+            conn.row_factory = sqlite3.Row
+            query = """
+                select
+                  b.id,
+                  b.title,
+                  b.path,
+                  d.name as data_name,
+                  d.format,
+                  coalesce(group_concat(distinct a.name), 'Unknown') as authors,
+                  coalesce(group_concat(distinct t.name), '') as tags,
+                  coalesce(c.text, '') as comments
+                from books b
+                join data d on d.book = b.id
+                left join books_authors_link bal on bal.book = b.id
+                left join authors a on a.id = bal.author
+                left join books_tags_link btl on btl.book = b.id
+                left join tags t on t.id = btl.tag
+                left join comments c on c.book = b.id
+                where lower(d.format) = 'pdf'
+                group by b.id, d.id
+                order by b.title collate nocase
+            """
+            for row in conn.execute(query):
+                path = root / row["path"] / f"{row['data_name']}.{row['format'].lower()}"
+                books.append(
+                    MetadataBook(
+                        library=library.key,
+                        title=row["title"] or path.stem,
+                        authors=clean_author(row["authors"] or "Unknown"),
+                        tags=row["tags"] or "",
+                        comments=row["comments"] or "",
+                        canonical_path=str(path),
+                    )
+                )
+    return books
+
+
+def match_any(text: str, words: tuple[str, ...]) -> str | None:
+    for word in words:
+        if word in text:
+            return word
+    return None
+
+
+TECH_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("dotnet-microsoft", ("c#", ".net", "dotnet", "asp.net", "visual studio", "azure devops", "wpf", "xaml", "microsoft", " net 9")),
+    ("software-architecture-design", ("architecture", "architecting", "domain driven", "ddd", "microservices", "microservice success", "design patterns", "enterprise integration", "event driven", "systems thinking", "diagramming", "collaborative software design", "communication patterns")),
+    ("web-api-development", ("api", "openapi", "swagger", "fastapi", "rest", "web applications", "http", "micro frontends", "fiddler")),
+    ("cloud-devops-platform", ("kubernetes", "docker", "terraform", "ansible", "devops", "cloud", "serverless", "openshift", "linux", "tmux", "unix", "automation", "git", "infrastructure", "open source")),
+    ("testing-quality", ("test", "testing", "quality", "contract testing", "specification by example")),
+    ("security", ("security", "cyber", "threat", "cryptography", "hacking", "devsecops")),
+    ("data-ai", ("artificial intelligence", "artificial intelligen", "machine learning", "data science", "data architecture", "dashboard", "visualization", "analytics", "ai ", "bad data", "big data", "data mesh", "streaming data", "llm")),
+    ("databases-data-systems", ("sql", "database", "postgres", "oracle", "data warehouse")),
+    ("programming-languages", ("python", "javascript", "typescript", "java", "ruby", "scala", "f#", "functional", "programming", "algorithms", "regular expressions", "vim", "markdown", "coding interviews", "software engineer", "pragmatic programmer", "creative programmer", "programmers", "competitive programmer", "philosophy of c")),
+    ("agile-product-delivery", ("agile", "scrum", "kanban", "lean", "product", "user stories", "impact mapping", "feature management", "continuous delivery", "noestimates", "workshops", "business model", "startup", "entrepreneur", "investing", "john cutler")),
+    ("ux-design-research", ("user experience", "ux", "designing for", "research", "usability", "content strategy", "design is a job", "make it so")),
+    ("engineering-leadership-career", ("leadership", "management", "career", "team", "meetings", "convening", "software craftsmanship", "apprenticeship", "lead software", "manage yourself", "lead and serve", "remote work", "allies", "alliances", "listen", "deal with it")),
+    ("technical-creativity-tools", ("mind performance", "hacks", "creativity", "geeks", "tools", "mind mapping", "day-to-day", "focus")),
+)
+
+
+PERSONAL_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("technology-misfiled", ("microservices", "programming", "software", "devops", "kubernetes", "docker", "code ")),
+    ("buddhism-meditation", ("buddh", "meditat", "vipassana", "dhamma", "dharma", "zen", "sutta", "discourses", "analayo", "gateless", "defilements", "jhana", "mindfulness", "lama", "yeshe", "dependent origination", "emptiness", "hindrances", "glenn wallis", "mctb2", "edmonton retreat")),
+    ("taichi-qigong-tcm", ("tai chi", "taichi", "qi gong", "qigong", "tcm", "ki breathing", "kibreathing", "acupuncture", "meridian", "daoist", "taoist", "internal alchemy", "hara", "inner smile", "healing sounds", "psychic channels")),
+    ("yoga-tantra-energy", ("yoga", "tantra", "kundalini", "kriya", "chakra", "prana", "breathing in the light", "lightening path", "great bliss", "holosync", "energetics")),
+    ("health-fitness-nutrition", ("fitness", "nutrition", "diet", "bulletproof", "supplement", "exercise", "excercise", "ultra", "chef", "shopping guide", "alcohol infographic", "fasting", "weight loss", "sleep", "paleo", "cookbook", "keto", "fat loss", "hiit", "caveman", "workouts", "muscle recovery", "if guide", "intermittent feeding")),
+    ("psychology-self-development", ("psychology", "shadow work", "survival mode", "gettingoutofsurvivalmode", "microaggression", "listen", "introspect", "forget", "remember", "hollis", "archetypal", "codependency", "emotional agility", "essentialism", "approval trap", "rituals", "win the day", "therapist", "fantasy", "self help", "motivation", "creative minds", "30 day upgrade")),
+    ("philosophy-consciousness", ("philosophy", "consciousness", "plausibility", "think", "kuhn", "scientific revolutions", "dancing wu li", "science of", "advaita", "nonduality", "non-dual", "awareness", "free will", "in praise of love", "badiou", "mind and", "hobbes", "leviathan", "everycradleisagrave", "beautiful days")),
+    ("science-nature", ("science", "physics", "biology", "nature", "cold fusion", "civilization", "history", "jcmns", "magnetic fields", "biological transmutation", "origin of life", "future of life", "feynman", "quarks", "brain", "about time", "carl sagan", "universe", "skepticism")),
+    ("esoterica-occult", ("occult", "mysteries", "unvelied", "unveiled", "bodri", "reich", "protection method", "tripura", "saraswati", "avision", "evola", "hermetic", "terence mckenna", "alchemy", "night side", "subtle bodies", "loco austriaco")),
+    ("religion-atheism", ("religion", "atheism", "atheist", "god", "christian", "theology", "spiritual", "islam", "sam harris")),
+    ("business-finance-startups", ("business", "finance", "economics", "startup", "entrepreneur", "running lean", "cash in a flash", "money")),
+    ("music-arts-skills", ("music", "guitar", "drawing", "art", "piano", "singing", "creativity")),
+    ("writing-research-study", ("writing", "research", "study", "course", "guide for the seeker", "guidance for the seeker", "phd")),
+)
+
+
+def classify(book: MetadataBook) -> Proposal:
+    text = normalize(" ".join([book.title, book.authors, book.tags, book.comments]))
+    tags = useful_tags(book.tags)
+    tag_text = normalize(" ".join(tags))
+    rules = TECH_RULES if book.library == "tech" else PERSONAL_RULES
+
+    for category, words in rules:
+        hit = match_any(text, words)
+        if hit:
+            confidence = "high" if hit in tag_text or hit in normalize(book.title) else "medium"
+            return Proposal(book, category, confidence, hit)
+
+    if tags:
+        return Proposal(book, f"{book.library}-manual-review", "low", f"unmapped tag: {tags[0]}")
+    return Proposal(book, f"{book.library}-manual-review", "low", "insufficient metadata")
+
+
+def write_csv(path: Path, proposals: list[Proposal]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["library", "title", "authors", "current_tags", "useful_tags", "proposed_category", "confidence", "reason"])
+        for proposal in proposals:
+            writer.writerow(
+                [
+                    proposal.book.library,
+                    proposal.book.title,
+                    proposal.book.authors,
+                    proposal.book.tags,
+                    "; ".join(useful_tags(proposal.book.tags)),
+                    proposal.category,
+                    proposal.confidence,
+                    proposal.reason,
+                ]
+            )
+
+
+def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]]) -> None:
+    lines = [
+        "# Lazybooks Taxonomy Proposal",
+        "",
+        "Generated from Calibre title, author, tag, and comment metadata. Review artifact only; it does not write back to Calibre or change manifests.",
+        "",
+        "Intent: replace noisy first-tag categories such as `self`, `personal`, `tech`, `unknown`, and `MEAP Vnn` with a small browsing taxonomy.",
+        "",
+    ]
+
+    for library, proposals in proposals_by_library.items():
+        counts = Counter(proposal.category for proposal in proposals)
+        confidence = Counter(proposal.confidence for proposal in proposals)
+        lines.extend(
+            [
+                f"## {library.title()}",
+                "",
+                f"- Books: {len(proposals)}",
+                f"- Confidence: high {confidence['high']}, medium {confidence['medium']}, low {confidence['low']}",
+                "",
+                "| Proposed category | Count |",
+                "|---|---:|",
+            ]
+        )
+        for category, count in counts.most_common():
+            lines.append(f"| `{category}` | {count} |")
+        lines.extend(["", f"Detail CSV: `reports/{library}-taxonomy-proposal.csv`", ""])
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def selected_libraries(names: list[str]) -> list[LibraryConfig]:
+    libraries, _ = load_libraries()
+    if not names:
+        return [library for library in libraries if library.key in {"tech", "personal"}]
+    requested = set(names)
+    selected = [library for library in libraries if library.key in requested]
+    missing = requested - {library.key for library in selected}
+    if missing:
+        raise SystemExit(f"Unknown libraries: {', '.join(sorted(missing))}")
+    return selected
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Propose a small review taxonomy for Calibre-backed lazybooks libraries.")
+    parser.add_argument("libraries", nargs="*", help="Library keys to process. Defaults to tech and personal.")
+    parser.add_argument("--output-dir", type=Path, default=Path("reports"), help="Directory for Markdown and CSV reports.")
+    args = parser.parse_args()
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    proposals_by_library: dict[str, list[Proposal]] = {}
+    for library in selected_libraries(args.libraries):
+        proposals = [classify(book) for book in load_db_books(library)]
+        proposals.sort(key=lambda item: (item.category.casefold(), item.book.title.casefold()))
+        proposals_by_library[library.key] = proposals
+        write_csv(args.output_dir / f"{library.key}-taxonomy-proposal.csv", proposals)
+
+    write_summary(args.output_dir / "taxonomy-proposal.md", proposals_by_library)
+    for library, proposals in proposals_by_library.items():
+        print(f"{library}: {len(proposals)} books -> {args.output_dir / f'{library}-taxonomy-proposal.csv'}")
+    print(f"summary -> {args.output_dir / 'taxonomy-proposal.md'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
