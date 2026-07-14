@@ -23,6 +23,8 @@ PAIR_ACCENT = 4
 PAIR_SELECTION = 5
 PAIR_AUTHOR = 6
 PAIR_DIVIDER = 7
+PAIR_MODAL = 8
+PAIR_MODAL_BORDER = 9
 
 
 @dataclass
@@ -103,6 +105,14 @@ def draw_text(win: curses.window, y: int, x: int, text: str, width: int, attr: i
         pass
 
 
+def wrap_field(label: str, value: str, width: int) -> list[str]:
+    prefix = f"{label}: "
+    if width <= len(prefix):
+        return [truncate(prefix + value, width)]
+    wrapped = textwrap.wrap(value or "-", width=width - len(prefix)) or [""]
+    return [prefix + wrapped[0]] + [" " * len(prefix) + line for line in wrapped[1:]]
+
+
 def muted_attr(pair: int) -> int:
     attr = curses.color_pair(pair)
     if curses.COLORS < 256:
@@ -152,6 +162,8 @@ def init_palette() -> None:
         curses.init_pair(PAIR_SELECTION, 253, 238)
         curses.init_pair(PAIR_AUTHOR, 248, -1)
         curses.init_pair(PAIR_DIVIDER, 240, -1)
+        curses.init_pair(PAIR_MODAL, 252, 236)
+        curses.init_pair(PAIR_MODAL_BORDER, 109, 236)
     else:
         curses.init_pair(PAIR_META, curses.COLOR_WHITE, -1)
         curses.init_pair(PAIR_STATUS, curses.COLOR_BLACK, curses.COLOR_CYAN)
@@ -159,6 +171,8 @@ def init_palette() -> None:
         curses.init_pair(PAIR_SELECTION, curses.COLOR_WHITE, curses.COLOR_BLUE)
         curses.init_pair(PAIR_AUTHOR, curses.COLOR_WHITE, -1)
         curses.init_pair(PAIR_DIVIDER, curses.COLOR_BLUE, -1)
+        curses.init_pair(PAIR_MODAL, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(PAIR_MODAL_BORDER, curses.COLOR_CYAN, curses.COLOR_BLACK)
 
 
 class App:
@@ -171,7 +185,7 @@ class App:
         self.book_scroll = 0
         self.focus = "books"
         self.query = ""
-        self.message = "Enter: fetch/open  /: search  Tab: switch pane  r: refresh  q: quit"
+        self.message = "Enter: fetch/open  Right/l: details  /: search  Tab: pane  r: refresh  q: quit"
 
     def build_categories(self) -> list[str]:
         cats = sorted({book.category for book in self.books}, key=lambda value: label_category(value).casefold())
@@ -319,6 +333,62 @@ class App:
         except Exception as exc:
             self.message = f"Refresh failed: {exc}"
 
+    def show_details(self, book: Book) -> None:
+        self.draw()
+        height, width = self.stdscr.getmaxyx()
+        left_width = max(22, min(34, width // 3))
+        selected_row = 4 + max(0, self.book_index - self.book_scroll)
+        modal_width = min(max(46, width // 2), max(20, width - left_width - 6))
+        modal_height = min(15, max(8, height - 4))
+        modal_x = min(max(left_width + 3, width - modal_width - 3), max(0, width - modal_width - 1))
+        modal_y = min(max(3, selected_row - 2), max(1, height - modal_height - 2))
+        body_width = max(1, modal_width - 4)
+        cache_state = "cached" if cached_path(book).exists() else "not cached"
+        cache_file = str(cached_path(book))
+
+        lines: list[tuple[str, int]] = [("Book details", curses.A_BOLD | curses.color_pair(PAIR_ACCENT)), ("", 0)]
+        for label, value in [
+            ("Title", book.title),
+            ("Author", book.author),
+            ("Category", label_category(book.category)),
+            ("Source", book.source),
+            ("Cache", cache_state),
+            ("Local", cache_file),
+            ("Path", book.canonical_path),
+        ]:
+            attr = muted_attr(PAIR_AUTHOR) if label == "Author" else muted_attr(PAIR_META)
+            if label == "Title":
+                attr = curses.color_pair(PAIR_ACCENT)
+            lines.extend((line, attr) for line in wrap_field(label, value, body_width))
+
+        modal_attr = curses.color_pair(PAIR_MODAL)
+        border_attr = curses.color_pair(PAIR_MODAL_BORDER)
+        try:
+            for row in range(modal_height):
+                self.stdscr.addstr(modal_y + row, modal_x, " " * modal_width, modal_attr)
+            self.stdscr.hline(modal_y, modal_x + 1, curses.ACS_HLINE, modal_width - 2, border_attr)
+            self.stdscr.hline(modal_y + modal_height - 1, modal_x + 1, curses.ACS_HLINE, modal_width - 2, border_attr)
+            self.stdscr.vline(modal_y + 1, modal_x, curses.ACS_VLINE, modal_height - 2, border_attr)
+            self.stdscr.vline(modal_y + 1, modal_x + modal_width - 1, curses.ACS_VLINE, modal_height - 2, border_attr)
+            self.stdscr.addch(modal_y, modal_x, curses.ACS_ULCORNER, border_attr)
+            self.stdscr.addch(modal_y, modal_x + modal_width - 1, curses.ACS_URCORNER, border_attr)
+            self.stdscr.addch(modal_y + modal_height - 1, modal_x, curses.ACS_LLCORNER, border_attr)
+            self.stdscr.addch(modal_y + modal_height - 1, modal_x + modal_width - 1, curses.ACS_LRCORNER, border_attr)
+        except curses.error:
+            pass
+
+        for offset, (line, attr) in enumerate(lines[: modal_height - 3], start=1):
+            draw_text(self.stdscr, modal_y + offset, modal_x + 2, line, body_width, attr or modal_attr)
+        draw_text(self.stdscr, modal_y + modal_height - 2, modal_x + 2, "Any key to close", body_width, muted_attr(PAIR_META))
+        self.stdscr.refresh()
+
+        self.stdscr.timeout(-1)
+        try:
+            self.stdscr.getch()
+        finally:
+            self.stdscr.timeout(250)
+        self.message = "Details closed"
+
     def run(self) -> None:
         self.stdscr.timeout(250)
         while True:
@@ -356,6 +426,11 @@ class App:
                     self.book_scroll = 0
                 else:
                     self.open_selected()
+            elif key in (curses.KEY_RIGHT, ord("l")):
+                if visible:
+                    self.show_details(visible[self.book_index])
+                else:
+                    self.message = "No book selected"
             elif key == ord("/"):
                 self.prompt_search()
             elif key == ord("c"):

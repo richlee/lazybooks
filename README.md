@@ -174,6 +174,7 @@ Keys:
 - `/`: search
 - `c`: clear search
 - `Enter`: fetch and open selected book
+- `Right` or `l`: show book details; any key closes the popover
 - `r`: refresh manifest
 - `q` or `Esc`: quit
 
