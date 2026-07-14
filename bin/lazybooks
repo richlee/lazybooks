@@ -343,8 +343,12 @@ class App:
             idx = self.category_scroll + row - 4
             label = label_category(category) if category != "All" else "All"
             count = category_counts.get(category, 0)
-            attr = (curses.color_pair(PAIR_SELECTED_TEXT) | curses.A_BOLD) if self.focus == "categories" and idx == self.category_index else 0
-            if self.focus == "categories" and idx == self.category_index:
+            selected_category = idx == self.category_index
+            attr = 0
+            if selected_category:
+                attr = curses.color_pair(PAIR_SELECTED_TEXT)
+                if self.focus == "categories":
+                    attr |= curses.A_BOLD
                 try:
                     stdscr.addstr(row, 1, " " * max(0, left_width - 2), curses.color_pair(PAIR_SELECTION))
                 except curses.error:
