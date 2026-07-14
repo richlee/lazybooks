@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,8 @@ PAIR_AUTHOR = 6
 PAIR_DIVIDER = 7
 PAIR_MODAL = 8
 PAIR_MODAL_BORDER = 9
+HELP_MESSAGE = "Enter: fetch/open  Right/l: details  /: search  Tab: pane  r: refresh  q: quit"
+MESSAGE_TTL_SECONDS = 3.0
 
 
 @dataclass
@@ -185,7 +188,8 @@ class App:
         self.book_scroll = 0
         self.focus = "books"
         self.query = ""
-        self.message = "Enter: fetch/open  Right/l: details  /: search  Tab: pane  r: refresh  q: quit"
+        self.message = ""
+        self.message_until = 0.0
 
     def build_categories(self) -> list[str]:
         cats = sorted({book.category for book in self.books}, key=lambda value: label_category(value).casefold())
@@ -218,6 +222,17 @@ class App:
             self.book_scroll = self.book_index - max_rows + 1
         max_scroll = max(0, visible_count - max_rows)
         self.book_scroll = min(max(0, self.book_scroll), max_scroll)
+
+    def set_message(self, message: str, ttl: float = MESSAGE_TTL_SECONDS) -> None:
+        self.message = message
+        self.message_until = time.monotonic() + ttl
+
+    def status_message(self) -> str:
+        if self.message and time.monotonic() < self.message_until:
+            return self.message
+        self.message = ""
+        self.message_until = 0.0
+        return HELP_MESSAGE
 
     def draw(self) -> None:
         stdscr = self.stdscr
@@ -282,7 +297,7 @@ class App:
             for offset, line in enumerate(textwrap.wrap(book.canonical_path, width=max(10, path_width))[:3], start=2):
                 draw_text(stdscr, detail_y + offset, path_x, line, path_width, muted_attr(PAIR_META))
 
-        status(stdscr, self.message)
+        status(stdscr, self.status_message())
 
     def prompt_search(self) -> None:
         curses.echo()
@@ -298,9 +313,9 @@ class App:
             self.query = value.strip()
             self.book_index = 0
             self.book_scroll = 0
-            self.message = "Search updated" if self.query else "Search cleared"
+            self.set_message("Search updated" if self.query else "Search cleared")
         except curses.error:
-            self.message = "Search unchanged"
+            self.set_message("Search unchanged")
         finally:
             curses.noecho()
             curses.curs_set(0)
@@ -309,17 +324,17 @@ class App:
     def open_selected(self) -> None:
         visible = self.visible_books()
         if not visible:
-            self.message = "No book selected"
+            self.set_message("No book selected")
             return
         book = visible[self.book_index]
-        self.message = f"Fetching {book.title}..."
+        self.set_message(f"Fetching {book.title}...", ttl=30.0)
         self.draw()
         try:
             target = fetch_book(book)
-            self.message = f"Opened {target.name}"
+            self.set_message(f"Opened {target.name}")
             open_file(target)
         except Exception as exc:
-            self.message = f"Fetch failed: {exc}"
+            self.set_message(f"Fetch failed: {exc}", ttl=6.0)
 
     def refresh(self) -> None:
         try:
@@ -329,9 +344,9 @@ class App:
             self.category_index = min(self.category_index, len(self.categories) - 1)
             self.book_index = 0
             self.book_scroll = 0
-            self.message = "Index refreshed"
+            self.set_message("Index refreshed")
         except Exception as exc:
-            self.message = f"Refresh failed: {exc}"
+            self.set_message(f"Refresh failed: {exc}", ttl=6.0)
 
     def show_details(self, book: Book) -> None:
         self.draw()
@@ -387,7 +402,7 @@ class App:
             self.stdscr.getch()
         finally:
             self.stdscr.timeout(250)
-        self.message = "Details closed"
+        self.set_message("Details closed")
 
     def run(self) -> None:
         self.stdscr.timeout(250)
@@ -430,14 +445,14 @@ class App:
                 if visible:
                     self.show_details(visible[self.book_index])
                 else:
-                    self.message = "No book selected"
+                    self.set_message("No book selected")
             elif key == ord("/"):
                 self.prompt_search()
             elif key == ord("c"):
                 self.query = ""
                 self.book_index = 0
                 self.book_scroll = 0
-                self.message = "Search cleared"
+                self.set_message("Search cleared")
             elif key == ord("r"):
                 self.refresh()
 
