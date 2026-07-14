@@ -21,6 +21,8 @@ COVER_CACHE = CACHE / "covers"
 RENDER_CACHE = COVER_CACHE / "rendered"
 LOCAL_ONEDRIVE_PREFIX = os.environ.get("LAZYBOOKS_LOCAL_PREFIX", str(Path.home() / "OneDrive") + "/")
 REMOTE = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
+THUMBNAIL_COLUMNS = 10
+THUMBNAIL_ROWS = 9
 
 
 @dataclass
@@ -169,6 +171,7 @@ class App:
         self.cover_jobs: dict[str, Future[Path | None]] = {}
         self.cover_errors: dict[str, str] = {}
         self.rendered_cover_key: str | None = None
+        self.last_layout_key: tuple[int, int, int] | None = None
         self.message = "Enter: fetch/open  /: search  Tab: switch pane  t: fetch cover  r: refresh  q: quit"
 
     def build_categories(self) -> list[str]:
@@ -205,7 +208,6 @@ class App:
 
     def draw(self) -> None:
         stdscr = self.stdscr
-        stdscr.erase()
         height, width = stdscr.getmaxyx()
         left_width = max(22, min(34, width // 3))
         right_width = width - left_width - 1
@@ -217,6 +219,33 @@ class App:
 
         title = "Assurance Books"
         query = f"Search: {self.query}" if self.query else "Search: "
+
+        max_rows = max(0, height - detail_height - 5)
+        self.clamp_book_view(len(visible), max_rows)
+        selected_book = visible[self.book_index] if visible else None
+        updated_thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
+        updated_detail_height = 14 if updated_thumbnail_active else 4
+        if updated_detail_height != detail_height:
+            detail_height = updated_detail_height
+            max_rows = max(0, height - detail_height - 5)
+            self.clamp_book_view(len(visible), max_rows)
+            selected_book = visible[self.book_index] if visible else None
+            thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
+        else:
+            thumbnail_active = updated_thumbnail_active
+        detail_y = height - detail_height
+        thumbnail_y = detail_y + 5
+        thumbnail_x = left_width + 2
+        desired_cover_key = self.thumbnail_render_key(selected_book, thumbnail_y, thumbnail_x) if selected_book and thumbnail_active else None
+        if self.rendered_cover_key and self.rendered_cover_key != desired_cover_key:
+            self.clear_thumbnail()
+        layout_key = (height, width, detail_y)
+        if layout_key != self.last_layout_key:
+            stdscr.clear()
+            self.last_layout_key = layout_key
+        else:
+            stdscr.erase()
+
         draw_text(stdscr, 0, 0, title, width, curses.A_BOLD)
         draw_text(stdscr, 1, 0, query, width, curses.color_pair(4))
         stdscr.hline(2, 0, curses.ACS_HLINE, width - 1)
@@ -232,19 +261,6 @@ class App:
             attr = curses.A_REVERSE if self.focus == "categories" and idx == self.category_index else 0
             draw_text(stdscr, row, 1, f"{label} ({count})", left_width - 2, attr)
 
-        max_rows = max(0, height - detail_height - 5)
-        self.clamp_book_view(len(visible), max_rows)
-        selected_book = visible[self.book_index] if visible else None
-        updated_thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
-        updated_detail_height = 14 if updated_thumbnail_active else 4
-        if updated_detail_height != detail_height:
-            detail_height = updated_detail_height
-            max_rows = max(0, height - detail_height - 5)
-            self.clamp_book_view(len(visible), max_rows)
-            selected_book = visible[self.book_index] if visible else None
-            thumbnail_active = bool(selected_book and self.thumbnail_active(selected_book))
-        else:
-            thumbnail_active = updated_thumbnail_active
         start = self.book_scroll
         for row, book in enumerate(visible[start : start + max_rows], start=4):
             idx = start + row - 4
@@ -252,7 +268,6 @@ class App:
             row_text = f"{book.title} - {book.author}" if book.author and book.author != "Unknown" else book.title
             draw_text(stdscr, row, left_width + 2, row_text, right_width - 2, attr)
 
-        detail_y = height - detail_height
         stdscr.hline(detail_y - 1, left_width + 1, curses.ACS_HLINE, max(0, right_width - 1))
         if selected_book:
             book = selected_book
@@ -281,7 +296,7 @@ class App:
 
         status(stdscr, self.message)
         if selected_book and thumbnail_active:
-            self.draw_thumbnail(selected_book, detail_y + 5, left_width + 2)
+            self.draw_thumbnail(selected_book, thumbnail_y, thumbnail_x)
         else:
             self.clear_thumbnail()
 
@@ -320,6 +335,18 @@ class App:
             kitty_delete_images()
             self.rendered_cover_key = None
 
+    def thumbnail_render_key(self, book: Book | None, y: int, x: int) -> str | None:
+        if not book or not book.cover_path:
+            return None
+        cover = cached_cover_path(book)
+        if not cover.exists():
+            return None
+        try:
+            cover = render_cover_path(book)
+        except Exception:
+            return None
+        return f"{cover}:{y}:{x}:{THUMBNAIL_COLUMNS}:{THUMBNAIL_ROWS}"
+
     def draw_thumbnail(self, book: Book, y: int, x: int) -> None:
         if not book.cover_path:
             self.clear_thumbnail()
@@ -330,15 +357,13 @@ class App:
                 self.clear_thumbnail()
                 return
             cover = render_cover_path(book)
-            columns = 10
-            rows = 9
-            render_key = f"{cover}:{y}:{x}:{columns}:{rows}"
+            render_key = f"{cover}:{y}:{x}:{THUMBNAIL_COLUMNS}:{THUMBNAIL_ROWS}"
             if render_key == self.rendered_cover_key:
                 return
             self.clear_thumbnail()
             self.stdscr.move(y, x)
             self.stdscr.refresh()
-            kitty_draw_image(cover, columns=columns, rows=rows)
+            kitty_draw_image(cover, columns=THUMBNAIL_COLUMNS, rows=THUMBNAIL_ROWS)
             self.rendered_cover_key = render_key
         except Exception as exc:
             self.clear_thumbnail()
