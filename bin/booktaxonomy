@@ -57,7 +57,7 @@ def split_tags(value: str) -> list[str]:
     return [tag.strip() for tag in value.split(",") if tag.strip()]
 
 
-def useful_tags(value: str) -> list[str]:
+def useful_tags(value: str, tag_counts: Counter[str] | None = None, min_count: int = 1) -> list[str]:
     tags = []
     for tag in split_tags(value):
         key = normalize(tag)
@@ -65,8 +65,17 @@ def useful_tags(value: str) -> list[str]:
             continue
         if key.startswith("team "):
             continue
+        if tag_counts is not None and tag_counts[key] < min_count:
+            continue
         tags.append(tag)
     return tags
+
+
+def recurring_tag_counts(books: list[MetadataBook]) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for book in books:
+        counts.update({normalize(tag) for tag in useful_tags(book.tags)})
+    return counts
 
 
 def clean_author(value: str) -> str:
@@ -183,9 +192,9 @@ PERSONAL_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-def classify(book: MetadataBook) -> Proposal:
+def classify(book: MetadataBook, tag_counts: Counter[str]) -> Proposal:
     text = normalize(" ".join([book.title, book.authors, book.tags, book.comments]))
-    tags = useful_tags(book.tags)
+    tags = useful_tags(book.tags, tag_counts, min_count=2)
     tag_text = normalize(" ".join(tags))
     rules = TECH_RULES if book.library == "tech" else PERSONAL_RULES
 
@@ -200,10 +209,10 @@ def classify(book: MetadataBook) -> Proposal:
     return Proposal(book, f"{book.library}-manual-review", "low", "insufficient metadata")
 
 
-def write_csv(path: Path, proposals: list[Proposal]) -> None:
+def write_csv(path: Path, proposals: list[Proposal], tag_counts: Counter[str]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["library", "title", "authors", "current_tags", "useful_tags", "proposed_category", "confidence", "reason"])
+        writer.writerow(["library", "title", "authors", "current_tags", "recurring_tags", "proposed_category", "confidence", "reason"])
         for proposal in proposals:
             writer.writerow(
                 [
@@ -211,7 +220,7 @@ def write_csv(path: Path, proposals: list[Proposal]) -> None:
                     proposal.book.title,
                     proposal.book.authors,
                     proposal.book.tags,
-                    "; ".join(useful_tags(proposal.book.tags)),
+                    "; ".join(useful_tags(proposal.book.tags, tag_counts, min_count=2)),
                     proposal.category,
                     proposal.confidence,
                     proposal.reason,
@@ -271,10 +280,12 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     proposals_by_library: dict[str, list[Proposal]] = {}
     for library in selected_libraries(args.libraries):
-        proposals = [classify(book) for book in load_db_books(library)]
+        books = load_db_books(library)
+        tag_counts = recurring_tag_counts(books)
+        proposals = [classify(book, tag_counts) for book in books]
         proposals.sort(key=lambda item: (item.category.casefold(), item.book.title.casefold()))
         proposals_by_library[library.key] = proposals
-        write_csv(args.output_dir / f"{library.key}-taxonomy-proposal.csv", proposals)
+        write_csv(args.output_dir / f"{library.key}-taxonomy-proposal.csv", proposals, tag_counts)
 
     write_summary(args.output_dir / "taxonomy-proposal.md", proposals_by_library)
     for library, proposals in proposals_by_library.items():

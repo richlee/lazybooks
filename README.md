@@ -231,7 +231,9 @@ Output goes to:
 It does not update Calibre tags or rebuild manifests. The intent is to replace
 noisy first-tag categories such as `self`, `personal`, `tech`, `unknown`, and
 `MEAP Vnn` with a smaller browsing taxonomy, while keeping unclear/scanned items
-in a manual-review bucket.
+in a manual-review bucket. Single-occurrence Calibre tags are excluded from the
+`recurring_tags` CSV column because they are usually import noise, source labels,
+or accidental one-off metadata rather than useful browsing facets.
 
 ## Search from the CLI
 
