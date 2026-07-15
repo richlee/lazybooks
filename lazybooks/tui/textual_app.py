@@ -192,10 +192,10 @@ class LazyBooksApp(App[None]):
     }
 
     #detail {
-        height: 4;
+        height: 5;
         border-top: solid #585f6b;
         color: #a8adb7;
-        padding: 0 1;
+        padding: 0 1 1 1;
     }
 
     #detail_title {
