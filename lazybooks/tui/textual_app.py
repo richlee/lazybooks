@@ -4,7 +4,7 @@ import argparse
 import textwrap
 from dataclasses import dataclass
 
-from textual import on, work
+from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -213,7 +213,6 @@ class LazyBooksApp(App[None]):
         Binding("tab", "toggle_focus", "Pane", show=False),
         Binding("/", "search", "Search", show=False),
         Binding("c", "clear_search", "Clear search", show=False),
-        Binding("enter", "open_selected", "Open", show=False),
         Binding("right,l", "details", "Details", show=False),
         Binding("d", "delete_cache", "Delete cache", show=False),
         Binding("r", "refresh", "Refresh", show=False),
@@ -385,6 +384,10 @@ class LazyBooksApp(App[None]):
     def on_key(self, event) -> None:
         if self.query_one("#search_input", Input).has_focus:
             return
+        if event.key == "enter" and self.query_one("#books", ListView).has_focus:
+            self.action_open_selected()
+            event.stop()
+            return
         if event.key and len(event.key) == 1 and event.key.isdigit() and event.key != "0":
             self.switch_library(int(event.key) - 1)
             event.stop()
@@ -420,7 +423,12 @@ class LazyBooksApp(App[None]):
         if event.list_view.index is not None:
             self.state.book_index = event.list_view.index
             self.update_detail()
-        self.action_open_selected()
+
+    @on(events.Click, "#books")
+    def books_clicked(self, event: events.Click) -> None:
+        if event.chain >= 2:
+            self.action_open_selected()
+            event.stop()
 
     @on(Input.Submitted, "#search_input")
     def search_submitted(self, event: Input.Submitted) -> None:
@@ -469,9 +477,11 @@ class LazyBooksApp(App[None]):
         if book is None:
             self.call_from_thread(self.set_message, "No book selected")
             return
-        self.call_from_thread(self.set_message, f"Fetching {book.title}...")
+        is_cached = cached_path(book, self.library).exists()
+        message = f"Opening cached {book.title}..." if is_cached else f"Fetching {book.title}..."
+        self.call_from_thread(self.set_message, message)
         try:
-            target = fetch_book(book, self.library)
+            target = cached_path(book, self.library) if is_cached else fetch_book(book, self.library)
             open_file(target)
             self.call_from_thread(self.set_message, f"Opened {target.name}")
             self.call_from_thread(self.update_detail)

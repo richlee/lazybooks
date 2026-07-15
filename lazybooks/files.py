@@ -33,6 +33,7 @@ def open_file(path: Path) -> None:
 def fetch_book(book: Book, library: LibraryConfig) -> Path:
     library.cache.mkdir(parents=True, exist_ok=True)
     target = cached_path(book, library)
+    if target.exists():
+        return target
     subprocess.run(["rclone", "copyto", remote_path(book, library), str(target)], check=True)
     return target
-
