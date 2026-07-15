@@ -99,6 +99,7 @@ class MessageModal(ModalScreen[None]):
             yield Static(self.title, classes="title")
             for line in self.wrapped_lines():
                 yield Static(line, classes="muted" if line else "")
+            yield Static("")
             yield Static("Any key to close", classes="muted")
 
     def on_key(self, event) -> None:
@@ -297,7 +298,9 @@ class LazyBooksApp(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.search_input().display = False
+        search = self.search_input()
+        search.display = False
+        search.can_focus = False
         self.refresh_all_views()
         self.books_view().focus()
 
@@ -463,9 +466,14 @@ class LazyBooksApp(App[None]):
         search = self.search_input()
         search.value = self.state.query
         search.display = bool(self.state.query)
+        search.can_focus = False
         self.refresh_all_views()
         self.focus_books()
         self.set_message("Search updated" if self.state.query else "Search cleared")
+
+    def on_blur(self, event: events.Blur) -> None:
+        if event.widget is self.search_input():
+            self.search_input().can_focus = False
 
     def action_toggle_focus(self) -> None:
         if self.focus_pane == "books":
@@ -477,6 +485,7 @@ class LazyBooksApp(App[None]):
     def action_search(self) -> None:
         search = self.search_input()
         search.display = True
+        search.can_focus = True
         search.value = self.state.query
         search.cursor_position = len(search.value)
         search.focus()
@@ -484,7 +493,9 @@ class LazyBooksApp(App[None]):
     def action_clear_search(self) -> None:
         self.state.query = ""
         self.state.book_index = 0
-        self.search_input().display = False
+        search = self.search_input()
+        search.display = False
+        search.can_focus = False
         self.refresh_all_views()
         self.focus_books()
         self.set_message("Search cleared")
