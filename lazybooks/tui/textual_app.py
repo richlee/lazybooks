@@ -192,10 +192,10 @@ class LazyBooksApp(App[None]):
     }
 
     #detail {
-        height: 2;
+        height: 3;
         border-top: solid #585f6b;
         color: #a8adb7;
-        padding: 0 1;
+        padding: 0 1 1 1;
     }
 
     #status {
@@ -274,7 +274,7 @@ class LazyBooksApp(App[None]):
         self.update_detail()
 
     def cache_marker(self, book: Book) -> str:
-        return "[#87d787]C[/]" if cached_path(book, self.library).exists() else " "
+        return "[green]C[/]" if cached_path(book, self.library).exists() else " "
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -514,6 +514,7 @@ class LazyBooksApp(App[None]):
             target = cached_path(book, self.library) if is_cached else fetch_book(book, self.library)
             open_file(target)
             self.call_from_thread(self.set_message, f"Opened {target.name}")
+            self.call_from_thread(self.update_books)
             self.call_from_thread(self.update_detail)
         except Exception as exc:
             self.call_from_thread(self.set_message, f"Fetch failed: {exc}")
@@ -533,6 +534,7 @@ class LazyBooksApp(App[None]):
             return
         try:
             path.unlink()
+            self.update_books()
             self.update_detail()
             self.focus_books()
             self.set_message(f"Deleted cached copy: {path.name}")
