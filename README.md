@@ -18,7 +18,7 @@ The normal workflow is:
 ## Commands
 
 - `lazybooks`: full terminal UI with categories, search, cache state, PDF fetch/open, and cached-copy delete.
-- `lazybooks-curses`: temporary fallback for the original curses TUI during the v0.2 Textual rewrite.
+- `lazybooks-curses`: legacy fallback for the original curses TUI.
 - `bookrefresh`: copies `index.html` and `manifest.json` from OneDrive into a local cache.
 - `bookfind`: searches a manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
@@ -50,7 +50,7 @@ brew install rclone fzf
 Clone the repo and add `bin` to your `PATH`:
 
 ```sh
-git clone https://github.com/YOUR-USER/lazybooks.git
+git clone https://github.com/richlee/lazybooks.git
 cd lazybooks
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
@@ -74,7 +74,7 @@ booktaxonomy --help
 ```
 
 For a package-style install later, use `pipx install .` from the repo root. The
-v0.2 branch still keeps `bin/` scripts available during the transition.
+repo still keeps `bin/` launcher scripts available for direct local use.
 
 ## rclone Setup
 
@@ -350,7 +350,7 @@ lazybooks
 ```
 
 `lazybooks` is the Textual TUI from v0.2 onward. The original curses
-implementation is temporarily available as:
+implementation is available as a legacy fallback:
 
 ```sh
 lazybooks-curses
@@ -455,13 +455,13 @@ The project version is stored in `VERSION` and exposed by:
 lazybooks --version
 ```
 
-Git release tags use the same version with a `v` prefix, for example `v0.1.0`.
+Git release tags use the same version with a `v` prefix, for example `v0.2.0`.
 For a release, update `VERSION`, commit it, tag the commit, and push both:
 
 ```sh
-git tag v0.1.0
+git tag v0.2.0
 git push
-git push origin v0.1.0
+git push origin v0.2.0
 ```
 
 ## Troubleshooting
