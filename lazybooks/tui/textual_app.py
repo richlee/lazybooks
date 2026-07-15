@@ -294,6 +294,14 @@ class LazyBooksApp(App[None]):
         if self.state.categories:
             view.index = self.state.category_index
 
+    def sync_category_selection(self) -> None:
+        view = self.query_one("#categories", ListView)
+        for index, item in enumerate(view.children):
+            if index == self.state.category_index:
+                item.add_class("selected_category")
+            else:
+                item.remove_class("selected_category")
+
     def update_books(self) -> None:
         view = self.query_one("#books", ListView)
         view.clear()
@@ -351,7 +359,7 @@ class LazyBooksApp(App[None]):
         if event.list_view.has_focus and event.list_view.index is not None:
             self.state.category_index = event.list_view.index
             self.state.book_index = 0
-            self.update_categories()
+            self.sync_category_selection()
             self.update_books()
             self.update_detail()
 
