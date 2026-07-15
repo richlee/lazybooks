@@ -369,6 +369,24 @@ class LazyBooksApp(App[None]):
             self.state.book_index = event.list_view.index
             self.update_detail()
 
+    @on(ListView.Selected, "#categories")
+    def category_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.index is not None:
+            self.state.category_index = event.list_view.index
+            self.state.book_index = 0
+            self.sync_category_selection()
+            self.update_books()
+            self.update_detail()
+        self.focus_pane = "books"
+        self.query_one("#books", ListView).focus()
+
+    @on(ListView.Selected, "#books")
+    def book_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.index is not None:
+            self.state.book_index = event.list_view.index
+            self.update_detail()
+        self.action_open_selected()
+
     @on(Input.Submitted, "#search_input")
     def search_submitted(self, event: Input.Submitted) -> None:
         self.state.query = event.value.strip()
