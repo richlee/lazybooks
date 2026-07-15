@@ -18,7 +18,7 @@ from lazybooks.refresh import refresh_library
 from lazybooks.version import version_info, version_label
 
 
-HELP_TEXT = "Pane:Tab | Search:/ | Open:Enter | Info:→ | Del:d | Lib:1-9 | About:? | Quit:q"
+HELP_TEXT = "Pane:Tab | Search:/ | Clear Search:c | Open:Enter | Info:→ | Del:d | Lib:1-9 | About:? | Quit:q"
 ALL_CATEGORY = "All"
 MESSAGE_TIMEOUT_SECONDS = 3.0
 MODAL_WRAP_WIDTH = 72
