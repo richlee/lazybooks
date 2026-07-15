@@ -551,6 +551,8 @@ class LazyBooksApp(App[None]):
             self.call_from_thread(self.set_message, f"Refresh failed: {exc}")
 
     def action_details(self) -> None:
+        if not self.books_view().has_focus:
+            return
         book = self.selected_book()
         if book is None:
             self.set_message("No book selected")
