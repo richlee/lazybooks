@@ -17,7 +17,7 @@ from lazybooks.refresh import refresh_library
 from lazybooks.version import version_info, version_label
 
 
-HELP_TEXT = "Move: ↑/↓ | Pane: Tab | Search: / | Open: Enter | Details: →/l | Delete cache: d | Library: 1-9 | Refresh: r | About: ? | Quit: q/Esc"
+HELP_TEXT = "Pane:Tab | Search:/ | Open:Enter | Info:→ | Del:d | Lib:1-9 | About:? | Quit:q"
 
 
 @dataclass
@@ -109,7 +109,7 @@ class LazyBooksApp(App[None]):
     }
 
     #categories_panel {
-        width: 42;
+        width: 34;
         min-width: 28;
         border-right: solid #585f6b;
     }
@@ -271,6 +271,20 @@ class LazyBooksApp(App[None]):
         counts["All"] = len(self.state.books)
         for book in self.state.books:
             counts[book.category] = counts.get(book.category, 0) + 1
+        category_width = max(
+            28,
+            min(
+                46,
+                max(
+                    (
+                        len(f"{label_category(category) if category != 'All' else 'All'} ({counts.get(category, 0)})") + 3
+                        for category in self.state.categories
+                    ),
+                    default=28,
+                ),
+            ),
+        )
+        self.query_one("#categories_panel").styles.width = category_width
         for index, category in enumerate(self.state.categories):
             label = label_category(category) if category != "All" else "All"
             item = ListItem(Label(f"{label} ({counts.get(category, 0)})"))
