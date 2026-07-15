@@ -62,8 +62,6 @@ class MessageModal(ModalScreen[None]):
     }
     """
 
-    BINDINGS = [Binding("escape,enter,space,?,right,l,q", "close", "Close", show=False)]
-
     def __init__(self, title: str, lines: list[str]) -> None:
         super().__init__()
         self.title = title
@@ -98,7 +96,8 @@ class MessageModal(ModalScreen[None]):
                 yield Static(line, classes="muted" if line else "")
             yield Static("Any key to close", classes="muted")
 
-    def action_close(self) -> None:
+    def on_key(self, event) -> None:
+        event.stop()
         self.dismiss(None)
 
 
@@ -107,6 +106,10 @@ class LazyBooksApp(App[None]):
     Screen {
         background: #20242c;
         color: #d7d7d7;
+    }
+
+    MessageModal {
+        background: transparent;
     }
 
     Header {
