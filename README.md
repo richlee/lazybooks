@@ -18,6 +18,7 @@ The normal workflow is:
 ## Commands
 
 - `lazybooks`: full terminal UI with categories, search, cache state, PDF fetch/open, and cached-copy delete.
+- `lazybooks-curses`: temporary fallback for the original curses TUI during the v0.2 Textual rewrite.
 - `bookrefresh`: copies `index.html` and `manifest.json` from OneDrive into a local cache.
 - `bookfind`: searches a manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
@@ -31,6 +32,7 @@ Required:
 - Python 3.11 or newer
 - `rclone`
 - A configured `rclone` remote for your cloud storage
+- Textual, installed through the Python package metadata
 
 Optional:
 
@@ -50,6 +52,8 @@ Clone the repo and add `bin` to your `PATH`:
 ```sh
 git clone https://github.com/YOUR-USER/lazybooks.git
 cd lazybooks
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
 export PATH="$PWD/bin:$PATH"
 ```
 
@@ -68,6 +72,9 @@ bookrefresh --help
 bookindex --help
 booktaxonomy --help
 ```
+
+For a package-style install later, use `pipx install .` from the repo root. The
+v0.2 branch still keeps `bin/` scripts available during the transition.
 
 ## rclone Setup
 
@@ -340,6 +347,13 @@ bookrefresh tech
 
 ```sh
 lazybooks
+```
+
+`lazybooks` is the Textual TUI from v0.2 onward. The original curses
+implementation is temporarily available as:
+
+```sh
+lazybooks-curses
 ```
 
 Keys:
