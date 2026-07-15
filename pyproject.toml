@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lazybooks"
+dynamic = ["version"]
+description = "Terminal UI for cloud-hosted Calibre and PDF libraries"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Rich Lee", email = "richalee@pm.me" }
+]
+dependencies = [
+  "textual>=0.86",
+]
+
+[project.optional-dependencies]
+pick = ["fzf.py>=1.0"]
+
+[project.scripts]
+lazybooks = "lazybooks.tui.textual_app:main"
+bookfind = "lazybooks.cli.find:main"
+bookrefresh = "lazybooks.cli.refresh:main"
+
+[tool.setuptools]
+packages = ["lazybooks", "lazybooks.cli", "lazybooks.tui"]
+script-files = [
+  "bin/bookindex",
+  "bin/bookpick",
+  "bin/booktaxonomy",
+  "bin/lazybooks-curses",
+]
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }

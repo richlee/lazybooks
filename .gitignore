@@ -4,3 +4,5 @@ __pycache__/
 book-cache/
 book-indexes/
 reports/
+.venv/
+*.egg-info/

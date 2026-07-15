@@ -2,105 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
-import subprocess
 import sys
+from pathlib import Path
 
-from lazybooks_config import LibraryConfig, load_libraries
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-class RefreshError(RuntimeError):
-    def __init__(self, library: LibraryConfig, returncode: int, stderr: str) -> None:
-        super().__init__(stderr.strip() or f"rclone exited with {returncode}")
-        self.library = library
-        self.returncode = returncode
-        self.stderr = stderr
-
-
-def rclone_remotes() -> str:
-    try:
-        result = subprocess.run(["rclone", "listremotes"], check=True, capture_output=True, text=True)
-    except Exception:
-        return ""
-    return result.stdout.strip()
-
-
-def refresh_library(library: LibraryConfig) -> None:
-    if not library.index_remote:
-        raise RuntimeError(f"No index_remote configured for {library.name}")
-    library.index_dir.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        [
-            "rclone",
-            "copy",
-            library.index_remote,
-            str(library.index_dir),
-            "--filter",
-            "+ index.html",
-            "--filter",
-            "+ manifest.json",
-            "--filter",
-            "- *",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RefreshError(library, result.returncode, result.stderr)
-    print(f"Refreshed {library.name}:")
-    print(f"  {library.index_dir / 'index.html'}")
-    print(f"  {library.manifest}")
-
-
-def report_refresh_error(exc: RefreshError) -> None:
-    print(f"Refresh failed for {exc.library.name}.", file=sys.stderr)
-    print(f"Tried remote index: {exc.library.index_remote}", file=sys.stderr)
-    if "directory not found" in exc.stderr.casefold():
-        print("The rclone remote exists, but that index folder is missing.", file=sys.stderr)
-        print("Create/generate that library index, or remove it from ~/.config/lazybooks/config.toml for now.", file=sys.stderr)
-        return
-    remotes = rclone_remotes()
-    if remotes:
-        print("Available rclone remotes:", file=sys.stderr)
-        for remote in remotes.splitlines():
-            print(f"  {remote}", file=sys.stderr)
-    print("Check the rclone remote name in ~/.config/lazybooks/config.toml or LAZYBOOKS_REMOTE.", file=sys.stderr)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Refresh lazybooks index files from rclone remotes.")
-    parser.add_argument("library", nargs="?", help="Library key to refresh. Defaults to configured default.")
-    parser.add_argument("--all", action="store_true", help="Refresh all configured libraries.")
-    args = parser.parse_args()
-
-    libraries, default_index = load_libraries()
-    selected = libraries
-    if not args.all:
-        if args.library:
-            selected = [library for library in libraries if library.key == args.library]
-            if not selected:
-                print(f"Unknown library: {args.library}", file=sys.stderr)
-                print("Available libraries: " + ", ".join(library.key for library in libraries), file=sys.stderr)
-                return 2
-        else:
-            selected = [libraries[default_index]]
-
-    failures = 0
-    for library in selected:
-        try:
-            refresh_library(library)
-        except RefreshError as exc:
-            report_refresh_error(exc)
-            failures += 1
-            if not args.all:
-                return exc.returncode
-        except Exception as exc:
-            print(f"Refresh failed for {library.name}: {exc}", file=sys.stderr)
-            failures += 1
-            if not args.all:
-                return 1
-
-    return 1 if failures else 0
+from lazybooks.cli.refresh import main
 
 
 if __name__ == "__main__":

@@ -2,12 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIBRARY="${1:-}"
 
 config="$(
-  PYTHONPATH="$SCRIPT_DIR${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY' "$LIBRARY"
+  PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY' "$LIBRARY"
 import sys
-from lazybooks_config import load_libraries
+from lazybooks.config import load_libraries
 
 library_key = sys.argv[1]
 libraries, default_index = load_libraries()
