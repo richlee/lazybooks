@@ -1,0 +1,151 @@
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import lazybooks.tui.textual_app as textual_app
+from lazybooks.tui.textual_app import LazyBooksApp, MessageModal
+from textual.widgets import Input, ListView
+
+
+def run_async(coro):
+    return asyncio.run(coro)
+
+
+def test_search_is_not_in_tab_sequence(library) -> None:
+    async def scenario() -> None:
+        app = LazyBooksApp([library], 0)
+        async with app.run_test() as pilot:
+            await pilot.pause(0.2)
+            search = app.query_one("#search_input", Input)
+            categories = app.query_one("#categories", ListView)
+            books = app.query_one("#books", ListView)
+
+            assert books.has_focus
+            assert search.can_focus is False
+
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert categories.has_focus
+            assert not search.has_focus
+
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert books.has_focus
+            assert not search.has_focus
+
+            await pilot.press("/", "a", "l", "p", "h", "a", "enter")
+            await pilot.pause(0.2)
+            assert app.state.query == "alpha"
+            assert search.display is True
+            assert search.can_focus is False
+            assert books.has_focus
+
+    run_async(scenario())
+
+
+def test_category_change_selects_first_visible_book(library) -> None:
+    async def scenario() -> None:
+        app = LazyBooksApp([library], 0)
+        async with app.run_test() as pilot:
+            await pilot.pause(0.2)
+            categories = app.query_one("#categories", ListView)
+            books = app.query_one("#books", ListView)
+
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert categories.has_focus
+
+            await pilot.press("down")
+            await pilot.pause(0.2)
+            assert categories.has_focus
+            assert app.state.book_index == 0
+            assert books.index == 0
+
+            await pilot.press("enter")
+            await pilot.pause(0.2)
+            assert books.has_focus
+            assert app.state.book_index == 0
+
+    run_async(scenario())
+
+
+def test_details_and_delete_are_books_pane_only(monkeypatch, library, tmp_path: Path) -> None:
+    async def scenario() -> None:
+        cached = tmp_path / "cached.pdf"
+        cached.write_text("cached")
+        monkeypatch.setattr(textual_app, "cached_path", lambda book, config: cached)
+
+        app = LazyBooksApp([library], 0)
+        async with app.run_test() as pilot:
+            await pilot.pause(0.2)
+            books = app.query_one("#books", ListView)
+            categories = app.query_one("#categories", ListView)
+
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert categories.has_focus
+
+            await pilot.press("right")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, MessageModal)
+
+            await pilot.press("d")
+            await pilot.pause(0.1)
+            assert cached.exists()
+            assert categories.has_focus
+
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert books.has_focus
+
+            await pilot.press("right")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, MessageModal)
+            await pilot.press("x")
+            await pilot.pause(0.1)
+
+            await pilot.press("d")
+            await pilot.pause(0.2)
+            assert books.has_focus
+            assert not cached.exists()
+
+    run_async(scenario())
+
+
+def test_open_uses_cache_and_refreshes_cache_marker(monkeypatch, library, tmp_path: Path) -> None:
+    async def scenario() -> None:
+        cached = tmp_path / "cached.pdf"
+        calls: list[tuple[str, str]] = []
+
+        def fake_fetch(book, config):
+            cached.write_text("cached")
+            calls.append(("fetch", book.title))
+            return cached
+
+        def fake_open(path):
+            calls.append(("open", Path(path).name))
+
+        monkeypatch.setattr(textual_app, "cached_path", lambda book, config: cached)
+        monkeypatch.setattr(textual_app, "fetch_book", fake_fetch)
+        monkeypatch.setattr(textual_app, "open_file", fake_open)
+
+        app = LazyBooksApp([library], 0)
+        async with app.run_test() as pilot:
+            await pilot.pause(0.2)
+            assert app.cache_marker(app.selected_book()) == " "
+
+            await pilot.press("enter")
+            await pilot.pause(0.5)
+            assert calls == [("fetch", "Alpha Architecture"), ("open", "cached.pdf")]
+            assert app.cache_marker(app.selected_book()) == "[green]C[/]"
+
+            await pilot.press("enter")
+            await pilot.pause(0.5)
+            assert calls == [
+                ("fetch", "Alpha Architecture"),
+                ("open", "cached.pdf"),
+                ("open", "cached.pdf"),
+            ]
+
+    run_async(scenario())

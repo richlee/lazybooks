@@ -1,5 +1,7 @@
 # lazybooks
 
+[![Tests](https://github.com/richlee/lazybooks/actions/workflows/tests.yml/badge.svg)](https://github.com/richlee/lazybooks/actions/workflows/tests.yml)
+
 Lazy terminal access to cloud-hosted book libraries.
 
 `lazybooks` is a small set of command-line tools for browsing generated book
@@ -45,15 +47,29 @@ On macOS with Homebrew:
 brew install rclone fzf
 ```
 
-## Install
+## Install For Use
 
-Clone the repo and add `bin` to your `PATH`:
+Clone the repo and install the package in a virtual environment:
 
 ```sh
 git clone https://github.com/richlee/lazybooks.git
 cd lazybooks
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
+```
+
+The package install provides the main commands:
+
+```sh
+lazybooks --version
+bookrefresh --help
+bookfind --help
+```
+
+Some helper scripts are still distributed from `bin/`. For `bookindex`,
+`bookpick`, `booktaxonomy`, and `lazybooks-curses`, add `bin` to your `PATH`:
+
+```sh
 export PATH="$PWD/bin:$PATH"
 ```
 
@@ -63,18 +79,11 @@ For persistent shell setup, add the path to your shell profile:
 export PATH="$HOME/dev/lazybooks/bin:$PATH"
 ```
 
-Check the commands are visible:
+For an isolated user install from a checkout:
 
 ```sh
-command -v lazybooks
-lazybooks --version
-bookrefresh --help
-bookindex --help
-booktaxonomy --help
+pipx install .
 ```
-
-For a package-style install later, use `pipx install .` from the repo root. The
-repo still keeps `bin/` launcher scripts available for direct local use.
 
 ## rclone Setup
 
@@ -378,6 +387,43 @@ PDFs are fetched into the configured cache, usually:
 
 Deleting a cached book only removes the local downloaded copy. It does not touch
 OneDrive, Calibre, or the manifest.
+
+## Development
+
+Install development dependencies:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+```
+
+Run tests:
+
+```sh
+.venv/bin/python -m pytest
+```
+
+The test suite uses temporary manifests and cache directories. It does not need
+access to your OneDrive, Calibre libraries, or personal config.
+
+Before a release, also run:
+
+```sh
+.venv/bin/python -m py_compile lazybooks/*.py lazybooks/cli/*.py lazybooks/tui/*.py
+.venv/bin/lazybooks --version
+```
+
+## Public Readiness
+
+The core v0.2 product is usable, but a more public-facing release still needs:
+
+- screenshots or a short terminal GIF
+- cross-platform smoke testing on macOS, Linux, and Windows
+- confirmation of `rclone`, path, and file-opening behaviour on each platform
+- a short GitHub release note for each tagged release
+- a decision on whether to move remaining helper scripts into package entry points
+
+Use `docs/cross-platform-checklist.md` for platform test passes.
 
 ## Search From The CLI
 
