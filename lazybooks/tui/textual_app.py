@@ -19,6 +19,11 @@ from lazybooks.version import version_info, version_label
 
 
 HELP_TEXT = "Pane:Tab | Search:/ | Open:Enter | Info:→ | Del:d | Lib:1-9 | About:? | Quit:q"
+ALL_CATEGORY = "All"
+MESSAGE_TIMEOUT_SECONDS = 3.0
+MODAL_WRAP_WIDTH = 72
+MAX_LIBRARY_SHORTCUTS = 9
+UNKNOWN_AUTHOR = "Unknown"
 
 
 @dataclass
@@ -81,7 +86,7 @@ class MessageModal(ModalScreen[None]):
             wrapped.extend(
                 textwrap.wrap(
                     line,
-                    width=72,
+                    width=MODAL_WRAP_WIDTH,
                     subsequent_indent=subsequent_indent,
                     break_long_words=True,
                     break_on_hyphens=False,
@@ -226,6 +231,7 @@ class LazyBooksApp(App[None]):
         self.state_by_key: dict[str, LibraryState] = {}
         self.focus_pane = "books"
         self.message = HELP_TEXT
+        self.message_id = 0
 
     @property
     def library(self) -> LibraryConfig:
@@ -244,7 +250,31 @@ class LazyBooksApp(App[None]):
             return LibraryState(books=books, categories=build_categories(books))
         except Exception as exc:
             self.message = f"Could not load {library.name}: {exc}"
-            return LibraryState(books=[], categories=["All"])
+            return LibraryState(books=[], categories=[ALL_CATEGORY])
+
+    def categories_view(self) -> ListView:
+        return self.query_one("#categories", ListView)
+
+    def books_view(self) -> ListView:
+        return self.query_one("#books", ListView)
+
+    def search_input(self) -> Input:
+        return self.query_one("#search_input", Input)
+
+    def focus_books(self) -> None:
+        self.focus_pane = "books"
+        self.books_view().focus()
+
+    def select_category(self, index: int) -> None:
+        self.state.category_index = index
+        self.state.book_index = 0
+        self.sync_category_selection()
+        self.update_books()
+        self.update_detail()
+
+    def select_book(self, index: int) -> None:
+        self.state.book_index = index
+        self.update_detail()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -267,12 +297,12 @@ class LazyBooksApp(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one("#search_input", Input).display = False
+        self.search_input().display = False
         self.refresh_all_views()
-        self.query_one("#books", ListView).focus()
+        self.books_view().focus()
 
     def visible(self) -> list[Book]:
-        category = self.state.categories[self.state.category_index] if self.state.categories else "All"
+        category = self.state.categories[self.state.category_index] if self.state.categories else ALL_CATEGORY
         return visible_books(self.state.books, category, self.state.query)
 
     def refresh_all_views(self) -> None:
@@ -285,22 +315,22 @@ class LazyBooksApp(App[None]):
 
     def update_tabs(self) -> None:
         labels = []
-        for index, library in enumerate(self.libraries[:9], start=1):
+        for index, library in enumerate(self.libraries[:MAX_LIBRARY_SHORTCUTS], start=1):
             label = f"[{index}] {library.name}"
             labels.append(f"[reverse]{label}[/]" if index - 1 == self.library_index else label)
         self.query_one("#tabs", Static).update(f"Libraries: {'  '.join(labels)}")
 
     def update_search(self) -> None:
-        search_input = self.query_one("#search_input", Input)
+        search_input = self.search_input()
         search_input.display = bool(self.state.query) or search_input.has_focus
         if search_input.value != self.state.query:
             search_input.value = self.state.query
 
     def update_categories(self) -> None:
-        view = self.query_one("#categories", ListView)
+        view = self.categories_view()
         view.clear()
         counts = {category: 0 for category in self.state.categories}
-        counts["All"] = len(self.state.books)
+        counts[ALL_CATEGORY] = len(self.state.books)
         for book in self.state.books:
             counts[book.category] = counts.get(book.category, 0) + 1
         category_width = max(
@@ -309,7 +339,11 @@ class LazyBooksApp(App[None]):
                 46,
                 max(
                     (
-                        len(f"{label_category(category) if category != 'All' else 'All'} ({counts.get(category, 0)})") + 3
+                        len(
+                            f"{label_category(category) if category != ALL_CATEGORY else ALL_CATEGORY} "
+                            f"({counts.get(category, 0)})"
+                        )
+                        + 3
                         for category in self.state.categories
                     ),
                     default=28,
@@ -318,7 +352,7 @@ class LazyBooksApp(App[None]):
         )
         self.query_one("#categories_panel").styles.width = category_width
         for index, category in enumerate(self.state.categories):
-            label = label_category(category) if category != "All" else "All"
+            label = label_category(category) if category != ALL_CATEGORY else ALL_CATEGORY
             item = ListItem(Label(f"{label} ({counts.get(category, 0)})"))
             if index == self.state.category_index:
                 item.add_class("selected_category")
@@ -327,7 +361,7 @@ class LazyBooksApp(App[None]):
             view.index = self.state.category_index
 
     def sync_category_selection(self) -> None:
-        view = self.query_one("#categories", ListView)
+        view = self.categories_view()
         for index, item in enumerate(view.children):
             if index == self.state.category_index:
                 item.add_class("selected_category")
@@ -335,12 +369,12 @@ class LazyBooksApp(App[None]):
                 item.remove_class("selected_category")
 
     def update_books(self) -> None:
-        view = self.query_one("#books", ListView)
+        view = self.books_view()
         view.clear()
         books = self.visible()
         self.state.book_index = min(max(0, self.state.book_index), max(0, len(books) - 1))
         for book in books:
-            author = f" - {book.author}" if book.author and book.author != "Unknown" else ""
+            author = f" - {book.author}" if book.author and book.author != UNKNOWN_AUTHOR else ""
             view.append(ListItem(Label(f"{book.title}[dim]{author}[/]")))
         if books:
             view.index = self.state.book_index
@@ -364,11 +398,15 @@ class LazyBooksApp(App[None]):
         self.query_one("#status", Static).update(self.message or HELP_TEXT)
 
     def set_message(self, message: str) -> None:
+        self.message_id += 1
+        message_id = self.message_id
         self.message = message
         self.update_status()
-        self.set_timer(3.0, self.clear_message)
+        self.set_timer(MESSAGE_TIMEOUT_SECONDS, lambda: self.clear_message(message_id))
 
-    def clear_message(self) -> None:
+    def clear_message(self, message_id: int | None = None) -> None:
+        if message_id is not None and message_id != self.message_id:
+            return
         self.message = HELP_TEXT
         self.update_status()
 
@@ -376,15 +414,14 @@ class LazyBooksApp(App[None]):
         if index < 0 or index >= len(self.libraries):
             return
         self.library_index = index
-        self.focus_pane = "books"
         self.refresh_all_views()
-        self.query_one("#books", ListView).focus()
+        self.focus_books()
         self.set_message(f"Switched to {self.library.name}")
 
     def on_key(self, event) -> None:
-        if self.query_one("#search_input", Input).has_focus:
+        if self.search_input().has_focus:
             return
-        if event.key == "enter" and self.query_one("#books", ListView).has_focus:
+        if event.key == "enter" and self.books_view().has_focus:
             self.action_open_selected()
             event.stop()
             return
@@ -395,34 +432,23 @@ class LazyBooksApp(App[None]):
     @on(ListView.Highlighted, "#categories")
     def category_highlighted(self, event: ListView.Highlighted) -> None:
         if event.list_view.has_focus and event.list_view.index is not None:
-            self.state.category_index = event.list_view.index
-            self.state.book_index = 0
-            self.sync_category_selection()
-            self.update_books()
-            self.update_detail()
+            self.select_category(event.list_view.index)
 
     @on(ListView.Highlighted, "#books")
     def book_highlighted(self, event: ListView.Highlighted) -> None:
         if event.list_view.has_focus and event.list_view.index is not None:
-            self.state.book_index = event.list_view.index
-            self.update_detail()
+            self.select_book(event.list_view.index)
 
     @on(ListView.Selected, "#categories")
     def category_selected(self, event: ListView.Selected) -> None:
         if event.list_view.index is not None:
-            self.state.category_index = event.list_view.index
-            self.state.book_index = 0
-            self.sync_category_selection()
-            self.update_books()
-            self.update_detail()
-        self.focus_pane = "books"
-        self.query_one("#books", ListView).focus()
+            self.select_category(event.list_view.index)
+        self.focus_books()
 
     @on(ListView.Selected, "#books")
     def book_selected(self, event: ListView.Selected) -> None:
         if event.list_view.index is not None:
-            self.state.book_index = event.list_view.index
-            self.update_detail()
+            self.select_book(event.list_view.index)
 
     @on(events.Click, "#books")
     def books_clicked(self, event: events.Click) -> None:
@@ -434,24 +460,22 @@ class LazyBooksApp(App[None]):
     def search_submitted(self, event: Input.Submitted) -> None:
         self.state.query = event.value.strip()
         self.state.book_index = 0
-        search = self.query_one("#search_input", Input)
+        search = self.search_input()
         search.value = self.state.query
         search.display = bool(self.state.query)
-        self.focus_pane = "books"
         self.refresh_all_views()
-        self.query_one("#books", ListView).focus()
+        self.focus_books()
         self.set_message("Search updated" if self.state.query else "Search cleared")
 
     def action_toggle_focus(self) -> None:
         if self.focus_pane == "books":
             self.focus_pane = "categories"
-            self.query_one("#categories", ListView).focus()
+            self.categories_view().focus()
         else:
-            self.focus_pane = "books"
-            self.query_one("#books", ListView).focus()
+            self.focus_books()
 
     def action_search(self) -> None:
-        search = self.query_one("#search_input", Input)
+        search = self.search_input()
         search.display = True
         search.value = self.state.query
         search.cursor_position = len(search.value)
@@ -460,9 +484,9 @@ class LazyBooksApp(App[None]):
     def action_clear_search(self) -> None:
         self.state.query = ""
         self.state.book_index = 0
-        self.query_one("#search_input", Input).display = False
+        self.search_input().display = False
         self.refresh_all_views()
-        self.query_one("#books", ListView).focus()
+        self.focus_books()
         self.set_message("Search cleared")
 
     def selected_book(self) -> Book | None:

@@ -52,21 +52,36 @@ def safe_name(book: Book | dict) -> str:
     return f"{name}.pdf"
 
 
+def sort_books(books: list[Book]) -> list[Book]:
+    return sorted(books, key=lambda item: item.title.casefold())
+
+
+def searchable_text(book: Book) -> str:
+    return " ".join([book.title, book.author, book.category, book.source]).casefold()
+
+
 def matches(book: Book, terms: list[str]) -> bool:
-    haystack = " ".join([book.title, book.author, book.category, book.source]).casefold()
-    return all(term.casefold() in haystack for term in terms)
+    return matches_query(book, terms)
+
+
+def query_terms(query: str) -> list[str]:
+    return [term.casefold() for term in query.split() if term.strip()]
+
+
+def matches_query(book: Book, terms: list[str]) -> bool:
+    haystack = searchable_text(book)
+    return all(term.casefold() in haystack for term in terms if term.strip())
 
 
 def visible_books(books: list[Book], category: str, query: str) -> list[Book]:
-    terms = [term.casefold() for term in query.split() if term.strip()]
+    terms = query_terms(query)
     result: list[Book] = []
     for book in books:
         if category != "All" and book.category != category:
             continue
-        haystack = " ".join([book.title, book.author, book.category, book.source]).casefold()
-        if all(term in haystack for term in terms):
+        if matches_query(book, terms):
             result.append(book)
-    return sorted(result, key=lambda item: item.title.casefold())
+    return sort_books(result)
 
 
 def build_categories(books: list[Book]) -> list[str]:
@@ -76,4 +91,3 @@ def build_categories(books: list[Book]) -> list[str]:
 
 def manifest_path(path: str | Path) -> Path:
     return Path(path).expanduser()
-

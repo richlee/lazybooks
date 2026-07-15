@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from lazybooks.books import load_books, matches
+from lazybooks.books import load_books, matches, sort_books
 from lazybooks.config import load_libraries, select_library
 from lazybooks.files import cached_path, fetch_book, open_file, remote_path
 
@@ -23,7 +23,7 @@ def main() -> int:
         print("Available libraries: " + ", ".join(candidate.key for candidate in libraries), file=sys.stderr)
         return 2
 
-    books = [book for book in load_books(library) if matches(book, args.terms)]
+    books = sort_books([book for book in load_books(library) if matches(book, args.terms)])
     if not books:
         print("No matches.")
         return 1
@@ -43,9 +43,13 @@ def main() -> int:
 
     book = books[args.number - 1]
     target = cached_path(book, library)
-    src = remote_path(book, library)
+    cached = target.exists()
 
-    print(f"\nFetching:\n  {src}\n-> {target}")
+    if cached:
+        print(f"\nOpening cached copy:\n  {target}")
+    else:
+        src = remote_path(book, library)
+        print(f"\nFetching:\n  {src}\n-> {target}")
     target = fetch_book(book, library)
 
     if not args.no_open:
@@ -56,4 +60,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
