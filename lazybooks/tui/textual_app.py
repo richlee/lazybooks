@@ -36,7 +36,7 @@ class MessageModal(ModalScreen[None]):
     }
 
     MessageModal > Vertical {
-        width: 68;
+        width: 78;
         max-width: 90%;
         height: auto;
         max-height: 85%;
@@ -498,7 +498,8 @@ class LazyBooksApp(App[None]):
             "Contact: Rich Lee <richalee@pm.me>",
             "Built with OpenAI Codex",
             "",
-            "Tech stack: Python, Textual, rclone, JSON manifests, Calibre SQLite metadata, OneDrive, optional fzf.",
+            "Tech stack: Python, Textual, rclone, JSON manifests,",
+            "            Calibre SQLite metadata, OneDrive, optional fzf.",
         ]
         self.push_screen(MessageModal("lazybooks", lines), lambda _: self.set_message("About closed"))
 
