@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import textwrap
 from dataclasses import dataclass
 
 from textual import on, work
@@ -33,6 +34,7 @@ class MessageModal(ModalScreen[None]):
     DEFAULT_CSS = """
     MessageModal {
         align: center middle;
+        background: transparent;
     }
 
     MessageModal > Vertical {
@@ -54,6 +56,10 @@ class MessageModal(ModalScreen[None]):
     MessageModal .muted {
         color: $text-muted;
     }
+
+    MessageModal Static {
+        height: auto;
+    }
     """
 
     BINDINGS = [Binding("escape,enter,space,?,right,l,q", "close", "Close", show=False)]
@@ -63,12 +69,34 @@ class MessageModal(ModalScreen[None]):
         self.title = title
         self.lines = lines
 
+    def wrapped_lines(self) -> list[str]:
+        wrapped: list[str] = []
+        for line in self.lines:
+            if not line:
+                wrapped.append("")
+                continue
+            if ": " in line:
+                prefix = line.split(": ", 1)[0] + ": "
+                subsequent_indent = " " * len(prefix)
+            else:
+                subsequent_indent = ""
+            wrapped.extend(
+                textwrap.wrap(
+                    line,
+                    width=72,
+                    subsequent_indent=subsequent_indent,
+                    break_long_words=True,
+                    break_on_hyphens=False,
+                )
+            )
+        return wrapped
+
     def compose(self) -> ComposeResult:
         with Vertical():
-            yield Label(self.title, classes="title")
-            for line in self.lines:
-                yield Label(line, classes="muted" if line else "")
-            yield Label("Any key to close", classes="muted")
+            yield Static(self.title, classes="title")
+            for line in self.wrapped_lines():
+                yield Static(line, classes="muted" if line else "")
+            yield Static("Any key to close", classes="muted")
 
     def action_close(self) -> None:
         self.dismiss(None)
