@@ -288,7 +288,7 @@ class LazyBooksApp(App[None]):
         for index, library in enumerate(self.libraries[:9], start=1):
             label = f"[{index}] {library.name}"
             labels.append(f"[reverse]{label}[/]" if index - 1 == self.library_index else label)
-        self.query_one("#tabs", Static).update("  ".join(labels))
+        self.query_one("#tabs", Static).update(f"Libraries: {'  '.join(labels)}")
 
     def update_search(self) -> None:
         search_input = self.query_one("#search_input", Input)
