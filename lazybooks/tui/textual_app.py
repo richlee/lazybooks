@@ -524,19 +524,25 @@ class LazyBooksApp(App[None]):
             self.call_from_thread(self.set_message, f"Fetch failed: {exc}")
 
     def action_delete_cache(self) -> None:
+        if not self.books_view().has_focus:
+            return
         book = self.selected_book()
         if book is None:
             self.set_message("No book selected")
+            self.focus_books()
             return
         path = cached_path(book, self.library)
         if not path.exists():
             self.set_message("No cached copy to delete")
+            self.focus_books()
             return
         try:
             path.unlink()
             self.update_detail()
+            self.focus_books()
             self.set_message(f"Deleted cached copy: {path.name}")
         except Exception as exc:
+            self.focus_books()
             self.set_message(f"Delete failed: {exc}")
 
     @work(thread=True)
