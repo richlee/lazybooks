@@ -192,14 +192,10 @@ class LazyBooksApp(App[None]):
     }
 
     #detail {
-        height: 5;
+        height: 2;
         border-top: solid #585f6b;
         color: #a8adb7;
-        padding: 0 1 1 1;
-    }
-
-    #detail_title {
-        color: #87d787;
+        padding: 0 1;
     }
 
     #status {
@@ -277,6 +273,9 @@ class LazyBooksApp(App[None]):
         self.state.book_index = index
         self.update_detail()
 
+    def cache_marker(self, book: Book) -> str:
+        return "[#87d787]C[/]" if cached_path(book, self.library).exists() else " "
+
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="root"):
@@ -291,9 +290,7 @@ class LazyBooksApp(App[None]):
                     yield Static(" Books", classes="panel_title")
                     yield ListView(id="books")
             with Vertical(id="detail"):
-                yield Static(id="detail_title")
-                yield Static(id="detail_meta")
-                yield Static(id="detail_path")
+                yield Static(id="detail_summary")
             yield Static(HELP_TEXT, id="status")
         yield Footer()
 
@@ -377,25 +374,23 @@ class LazyBooksApp(App[None]):
         books = self.visible()
         self.state.book_index = min(max(0, self.state.book_index), max(0, len(books) - 1))
         for book in books:
+            marker = self.cache_marker(book)
             author = f" - {book.author}" if book.author and book.author != UNKNOWN_AUTHOR else ""
-            view.append(ListItem(Label(f"{book.title}[dim]{author}[/]")))
+            view.append(ListItem(Label(f"{marker}  {book.title}[dim]{author}[/]")))
         if books:
             view.index = self.state.book_index
 
     def update_detail(self) -> None:
         books = self.visible()
         if not books:
-            self.query_one("#detail_title", Static).update("")
-            self.query_one("#detail_meta", Static).update("No book selected")
-            self.query_one("#detail_path", Static).update("")
+            self.query_one("#detail_summary", Static).update("No book selected")
             return
         book = books[self.state.book_index]
-        cache_state = "cached" if cached_path(book, self.library).exists() else "not cached"
-        self.query_one("#detail_title", Static).update(f"{book.title}")
-        self.query_one("#detail_meta", Static).update(
-            f"{book.author} | {label_category(book.category)} | Cache: {cache_state} | Source: {book.source}"
+        cache_state = "[#87d787]cached[/]" if cached_path(book, self.library).exists() else "not cached"
+        author = f" | [dim]{book.author}[/]" if book.author and book.author != UNKNOWN_AUTHOR else ""
+        self.query_one("#detail_summary", Static).update(
+            f"{label_category(book.category)} | Cache: {cache_state} | {book.title}{author}"
         )
-        self.query_one("#detail_path", Static).update(book.canonical_path)
 
     def update_status(self) -> None:
         self.query_one("#status", Static).update(self.message or HELP_TEXT)
