@@ -176,7 +176,8 @@ class LazyBooksApp(App[None]):
         padding: 0 1;
     }
 
-    ListItem.--highlight {
+    ListView > ListItem.-highlight,
+    ListView:focus > ListItem.-highlight {
         background: #444444;
         color: #ffaf00;
         text-style: bold;
@@ -229,6 +230,7 @@ class LazyBooksApp(App[None]):
         self.focus_pane = "books"
         self.message = HELP_TEXT
         self.message_id = 0
+        self.category_enter_pending = False
 
     @property
     def library(self) -> LibraryConfig:
@@ -423,6 +425,11 @@ class LazyBooksApp(App[None]):
             self.action_open_selected()
             event.stop()
             return
+        if event.key == "enter" and self.categories_view().has_focus:
+            self.category_enter_pending = True
+            self.focus_books()
+            event.stop()
+            return
         if event.key and len(event.key) == 1 and event.key.isdigit() and event.key != "0":
             self.switch_library(int(event.key) - 1)
             event.stop()
@@ -441,12 +448,23 @@ class LazyBooksApp(App[None]):
     def category_selected(self, event: ListView.Selected) -> None:
         if event.list_view.index is not None:
             self.select_category(event.list_view.index)
-        self.focus_books()
+        if self.category_enter_pending:
+            self.category_enter_pending = False
+            self.focus_books()
+        else:
+            self.focus_pane = "categories"
+            self.categories_view().focus()
 
     @on(ListView.Selected, "#books")
     def book_selected(self, event: ListView.Selected) -> None:
         if event.list_view.index is not None:
             self.select_book(event.list_view.index)
+        self.focus_books()
+
+    @on(events.Click, "#categories")
+    def categories_clicked(self) -> None:
+        self.focus_pane = "categories"
+        self.categories_view().focus()
 
     @on(events.Click, "#books")
     def books_clicked(self, event: events.Click) -> None:
