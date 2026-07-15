@@ -293,7 +293,9 @@ class LazyBooksApp(App[None]):
 
     def update_search(self) -> None:
         search_input = self.query_one("#search_input", Input)
-        search_input.value = self.state.query
+        search_input.display = bool(self.state.query) or search_input.has_focus
+        if search_input.value != self.state.query:
+            search_input.value = self.state.query
 
     def update_categories(self) -> None:
         view = self.query_one("#categories", ListView)
@@ -381,6 +383,8 @@ class LazyBooksApp(App[None]):
         self.set_message(f"Switched to {self.library.name}")
 
     def on_key(self, event) -> None:
+        if self.query_one("#search_input", Input).has_focus:
+            return
         if event.key and len(event.key) == 1 and event.key.isdigit() and event.key != "0":
             self.switch_library(int(event.key) - 1)
             event.stop()
@@ -422,7 +426,9 @@ class LazyBooksApp(App[None]):
     def search_submitted(self, event: Input.Submitted) -> None:
         self.state.query = event.value.strip()
         self.state.book_index = 0
-        self.query_one("#search_input", Input).display = False
+        search = self.query_one("#search_input", Input)
+        search.value = self.state.query
+        search.display = bool(self.state.query)
         self.focus_pane = "books"
         self.refresh_all_views()
         self.query_one("#books", ListView).focus()
@@ -440,6 +446,7 @@ class LazyBooksApp(App[None]):
         search = self.query_one("#search_input", Input)
         search.display = True
         search.value = self.state.query
+        search.cursor_position = len(search.value)
         search.focus()
 
     def action_clear_search(self) -> None:
