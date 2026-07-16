@@ -711,6 +711,10 @@ def main() -> int:
 
         sys.argv = [sys.argv[0] + " doctor", *sys.argv[2:]]
         return doctor_main()
+    if len(sys.argv) > 1 and sys.argv[1] == "sync":
+        from lazybooks.cli.sync import main as sync_main
+
+        return sync_main(sys.argv[2:])
 
     parser = argparse.ArgumentParser(description="Browse lazybooks libraries.")
     parser.add_argument("--version", "-V", action="store_true", help="Show version and exit.")

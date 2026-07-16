@@ -6,8 +6,9 @@ Lazy terminal access to cloud-hosted book libraries.
 
 `lazybooks` is a small set of command-line tools for browsing generated book
 manifests, fetching a selected PDF from an `rclone` remote, and opening it
-locally. It is useful on machines where you can authenticate to OneDrive through
-`rclone`, but cannot or do not want to sync the whole library into Finder.
+locally. It is useful on machines where you can authenticate to a cloud provider
+through `rclone`, but cannot or do not want to sync the whole library into the
+local file manager.
 
 It works best when:
 
@@ -19,9 +20,9 @@ It works best when:
 
 The normal workflow is:
 
-1. Keep the source libraries in OneDrive, optionally managed by Calibre.
+1. Keep the source libraries in OneDrive, Google Drive, Dropbox, or another `rclone` provider, optionally managed by Calibre.
 2. Generate a small `index.html` and `manifest.json` for each library.
-3. Upload those index files to OneDrive.
+3. Upload those index files to the same provider.
 4. Refresh the local manifest cache on any machine.
 5. Browse locally and fetch individual PDFs on demand.
 
@@ -66,11 +67,12 @@ py -m venv .venv
 
 - `lazybooks`: full terminal UI with categories, search, cache state, PDF fetch/open, and cached-copy delete.
 - `lazybooks --demo`: run the packaged demo library.
+- `lazybooks sync`: build, publish, and refresh all configured libraries.
 - `lazybooks doctor`: check dependencies, config, manifests, cache paths, and rclone basics.
 - `lazybooks doctor --demo`: check the packaged demo library.
 - `lazybooks-doctor`: the same health check as a standalone command.
 - `lazybooks-curses`: legacy fallback for the original curses TUI.
-- `bookrefresh`: copies `index.html` and `manifest.json` from OneDrive into a local cache.
+- `bookrefresh`: copies `index.html` and `manifest.json` from configured cloud providers into a local cache.
 - `bookfind`: searches a manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
 - `bookindex`: builds `index.html` and `manifest.json` for a folder of PDFs.
@@ -192,13 +194,13 @@ scripts are also available in `bin/`.
 
 ## rclone Setup
 
-Create a OneDrive remote:
+Create one or more `rclone` remotes:
 
 ```sh
 rclone config
 ```
 
-Typical choices for a personal OneDrive:
+Typical choices for a personal OneDrive remote:
 
 ```text
 n) New remote
@@ -222,8 +224,10 @@ rclone lsf personal-onedrive:
 rclone lsf personal-onedrive:"Library"
 ```
 
-The examples below assume a remote named `personal-onedrive:`. If yours is named
-`onedrive:`, use that instead.
+For Google Drive or Dropbox, create additional remotes in the same `rclone config`
+flow and choose the relevant storage type. The examples below use
+`personal-onedrive:`, `google-drive:`, and `dropbox:`. Use your own remote names
+if they differ.
 
 ## Configuration
 
@@ -235,8 +239,8 @@ The examples below assume a remote named `personal-onedrive:`. If yours is named
 - where those index files are stored in cloud storage
 
 Create `~/.config/lazybooks/config.toml`. A source is normally one `rclone`
-remote, such as OneDrive or Google Drive. Each source can expose one or more
-libraries:
+remote, such as OneDrive, Google Drive, or Dropbox. Each source can expose one
+or more libraries:
 
 ```toml
 default_source = "onedrive"
@@ -287,6 +291,19 @@ title = "Google Assurance Books"
 library_name = "Assurance"
 index_dir = "~/book-indexes/google/assurance"
 index_remote = "google-drive:Library/book-indexes/assurance"
+
+[sources.dropbox]
+name = "Dropbox"
+remote = "dropbox:"
+local_prefix = "~/Library/CloudStorage/Dropbox/"
+
+[sources.dropbox.libraries.assurance]
+name = "Assurance"
+root = "~/Library/CloudStorage/Dropbox/Library/assurance"
+title = "Dropbox Assurance Books"
+library_name = "Assurance"
+index_dir = "~/book-indexes/dropbox/assurance"
+index_remote = "dropbox:Library/book-indexes/assurance"
 ```
 
 Important fields:
@@ -319,6 +336,22 @@ to switch provider. Press `1` to `9` to switch library within the active source.
 personal-onedrive:Library/tech/...
 ```
 
+If multiple sources use the same library key, use the source-qualified form in
+CLI commands:
+
+```sh
+bookindex --library onedrive.assurance --publish
+bookrefresh google.assurance
+bookfind --library dropbox.assurance security
+```
+
+Bare names such as `assurance` still work when they are unique. When a bare name
+is ambiguous, the tools print the available `source.library` names.
+
+The cache root is shared by default, but cached PDFs are stored beneath
+source/library subdirectories such as `~/book-cache/onedrive/assurance/`. That
+keeps duplicate titles from different providers or libraries separate.
+
 An example config is included at `examples/config.toml`.
 
 Environment variables such as `LAZYBOOKS_REMOTE` can override some config values,
@@ -335,10 +368,12 @@ bookfind --config examples/demo/config.toml secure
 
 ## Set Up A Real Library
 
-A real library has two locations:
+A real library has a few important locations:
 
-- the source PDFs, usually somewhere in OneDrive
+- the source PDFs, usually somewhere in a configured cloud provider
 - the generated index folder, usually small enough to keep local
+- the published index folder in the same cloud provider
+- the local cache for downloaded PDFs
 
 For example:
 
@@ -398,6 +433,16 @@ If each configured library has a `root`, build all configured indexes with:
 bookindex --all
 ```
 
+The usual configured workflow is:
+
+```sh
+lazybooks sync
+```
+
+That runs `bookindex --all --publish`, then `bookrefresh --all`, so the local
+machine has freshly generated manifests and the cloud copy is ready for other
+machines.
+
 Build one configured library with:
 
 ```sh
@@ -439,7 +484,7 @@ Then verify the configured refresh path:
 
 ```sh
 lazybooks doctor
-bookrefresh tech
+bookrefresh onedrive.tech
 bookrefresh --all
 ```
 
@@ -478,6 +523,8 @@ PDFs are fetched into the configured cache, usually:
 ```text
 ~/book-cache
 ```
+
+Each configured library gets its own subdirectory under that cache root.
 
 Deleting a cached book only removes the local downloaded copy. It does not touch
 OneDrive, Calibre, or the manifest.
@@ -619,20 +666,7 @@ just PDFs.
 After applying tags, rebuild and publish the affected indexes:
 
 ```sh
-bookindex \
-  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre" \
-  --index-dir "$HOME/book-indexes/tech" \
-  --title "Tech Books" \
-  --library-name Tech \
-  --calibre-metadata-only
-
-rclone copy "$HOME/book-indexes/tech" \
-  personal-onedrive:Library/book-indexes/tech \
-  --filter '+ index.html' \
-  --filter '+ manifest.json' \
-  --filter '- *'
-
-bookrefresh tech
+lazybooks sync
 ```
 
 ## Development
@@ -651,7 +685,7 @@ Run tests:
 ```
 
 The test suite uses temporary manifests and cache directories. It does not need
-access to your OneDrive, Calibre libraries, or personal config.
+access to your cloud remotes, Calibre libraries, or personal config.
 
 Before a release, also run:
 
@@ -717,7 +751,7 @@ directly when fetching. If it is absent, `lazybooks` falls back to rewriting
 - Normal browsing does not modify Calibre metadata.
 - Fetching a book copies one PDF into the local cache.
 - Deleting a cached book removes only the local cached copy.
-- `bookrefresh` copies only index files from OneDrive to local disk.
+- `bookrefresh` copies only index files from configured cloud providers to local disk.
 - Publishing indexes with `rclone copy` writes only `index.html` and `manifest.json` when the filters above are used.
 - `booktaxonomy --apply` modifies Calibre tags, but creates a timestamped `metadata.db.lazybooks-backup-*` first.
 - Avoid editing a Calibre SQLite database through a remote mount. Use a real local/synced filesystem for Calibre metadata operations.

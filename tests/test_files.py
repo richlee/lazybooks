@@ -43,15 +43,24 @@ def test_fetch_book_downloads_to_cache(monkeypatch, library) -> None:
 
     target = files.fetch_book(book, library)
 
-    assert target == library.cache / "Alpha Architecture.pdf"
+    assert target == library.cache / library.source_key / library.key / "Alpha Architecture.pdf"
     assert calls == [
         (
             [
                 "rclone",
                 "copyto",
                 "remote:Library/Alpha Architecture.pdf",
-                str(Path(library.cache) / "Alpha Architecture.pdf"),
+                str(Path(library.cache) / library.source_key / library.key / "Alpha Architecture.pdf"),
             ],
             True,
         )
     ]
+
+
+def test_cached_path_is_scoped_by_source_and_library(library) -> None:
+    book = next(book for book in load_books(library) if book.title == "Alpha Architecture")
+
+    assert files.cached_path(book, library).relative_to(library.cache).parts[:2] == (
+        library.source_key,
+        library.key,
+    )

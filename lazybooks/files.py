@@ -18,7 +18,7 @@ def remote_path(book: Book, library: LibraryConfig) -> str:
 
 
 def cached_path(book: Book, library: LibraryConfig) -> Path:
-    return library.cache / safe_name(book)
+    return library.cache / library.source_key / library.key / safe_name(book)
 
 
 def open_file(path: Path) -> None:
@@ -31,8 +31,8 @@ def open_file(path: Path) -> None:
 
 
 def fetch_book(book: Book, library: LibraryConfig) -> Path:
-    library.cache.mkdir(parents=True, exist_ok=True)
     target = cached_path(book, library)
+    target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         return target
     subprocess.run(["rclone", "copyto", remote_path(book, library), str(target)], check=True)

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from lazybooks.books import load_books, matches, sort_books
-from lazybooks.config import load_libraries, select_library
+from lazybooks.config import available_library_keys, matching_libraries, load_libraries, select_library
 from lazybooks.files import cached_path, fetch_book, open_file, remote_path
 
 
@@ -19,10 +19,16 @@ def main() -> int:
     args = parser.parse_args()
 
     libraries, default_index = load_libraries(Path(args.config).expanduser() if args.config else None)
+    if args.library:
+        matches_for_key = matching_libraries(libraries, args.library)
+        if len(matches_for_key) > 1:
+            print(f"Ambiguous library: {args.library}", file=sys.stderr)
+            print("Use one of: " + ", ".join(f"{library.source_key}.{library.key}" for library in matches_for_key), file=sys.stderr)
+            return 2
     library = select_library(libraries, default_index, args.library)
     if library is None:
         print(f"Unknown library: {args.library}", file=sys.stderr)
-        print("Available libraries: " + ", ".join(candidate.key for candidate in libraries), file=sys.stderr)
+        print("Available libraries: " + available_library_keys(libraries), file=sys.stderr)
         return 2
 
     books = sort_books([book for book in load_books(library) if matches(book, args.terms)])

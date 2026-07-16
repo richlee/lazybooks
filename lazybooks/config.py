@@ -238,7 +238,33 @@ def load_libraries(config_path: str | Path | None = DEFAULT_CONFIG) -> tuple[lis
     return libraries, default_index
 
 
+def qualified_library_key(library: LibraryConfig) -> str:
+    return f"{library.source_key}.{library.key}"
+
+
+def library_matches(library: LibraryConfig, key: str) -> bool:
+    return key in {library.key, qualified_library_key(library), f"{library.source_key}:{library.key}"}
+
+
+def matching_libraries(libraries: list[LibraryConfig], key: str | None) -> list[LibraryConfig]:
+    if not key:
+        return []
+    return [library for library in libraries if library_matches(library, key)]
+
+
+def available_library_keys(libraries: list[LibraryConfig]) -> str:
+    return ", ".join(qualified_library_key(library) for library in libraries)
+
+
+def ambiguous_library_keys(libraries: list[LibraryConfig]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for library in libraries:
+        grouped.setdefault(library.key, []).append(qualified_library_key(library))
+    return {key: values for key, values in grouped.items() if len(values) > 1}
+
+
 def select_library(libraries: list[LibraryConfig], default_index: int, key: str | None) -> LibraryConfig | None:
     if not key:
         return libraries[default_index]
-    return next((library for library in libraries if library.key == key), None)
+    matches = matching_libraries(libraries, key)
+    return matches[0] if len(matches) == 1 else None

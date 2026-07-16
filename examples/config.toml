@@ -46,3 +46,16 @@ title = "Google Assurance Books"
 library_name = "Assurance"
 index_dir = "~/book-indexes/google/assurance"
 index_remote = "google-drive:Library/book-indexes/assurance"
+
+[sources.dropbox]
+name = "Dropbox"
+remote = "dropbox:"
+local_prefix = "~/Library/CloudStorage/Dropbox/"
+
+[sources.dropbox.libraries.assurance]
+name = "Assurance"
+root = "~/Library/CloudStorage/Dropbox/Library/assurance"
+title = "Dropbox Assurance Books"
+library_name = "Assurance"
+index_dir = "~/book-indexes/dropbox/assurance"
+index_remote = "dropbox:Library/book-indexes/assurance"

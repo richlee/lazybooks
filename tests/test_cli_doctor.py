@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from lazybooks.cli import doctor
@@ -70,3 +71,28 @@ def test_doctor_requires_rclone_for_real_remote(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setattr(doctor.shutil, "which", lambda command: None)
 
     assert doctor.main() == 1
+
+
+def test_doctor_warns_for_ambiguous_bare_library_keys(monkeypatch, capsys, tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"books": []}')
+    library = LibraryConfig(
+        key="assurance",
+        name="Assurance",
+        manifest=manifest,
+        index_dir=tmp_path,
+        index_remote="demo:index",
+        cache=tmp_path / "cache",
+        remote="demo:",
+        local_prefix="/demo/",
+    )
+    onedrive = replace(library, source_key="onedrive", source_name="OneDrive")
+    google = replace(library, source_key="google", source_name="Google Drive")
+
+    monkeypatch.setattr(sys, "argv", ["lazybooks-doctor"])
+    monkeypatch.setattr(doctor, "load_libraries", lambda config_path=None: ([onedrive, google], 0))
+    monkeypatch.setattr(doctor.shutil, "which", lambda command: None)
+
+    assert doctor.main() == 0
+    output = capsys.readouterr().out
+    assert "[!!] ambiguous bare library keys: assurance => onedrive.assurance, google.assurance" in output

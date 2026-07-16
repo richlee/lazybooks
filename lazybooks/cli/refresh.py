@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from lazybooks.config import load_libraries
+from lazybooks.config import available_library_keys, matching_libraries, load_libraries
 from lazybooks.refresh import RefreshError, refresh_library, report_refresh_error
 
 
@@ -19,10 +19,14 @@ def main() -> int:
     selected = libraries
     if not args.all:
         if args.library:
-            selected = [library for library in libraries if library.key == args.library]
+            selected = matching_libraries(libraries, args.library)
             if not selected:
                 print(f"Unknown library: {args.library}", file=sys.stderr)
-                print("Available libraries: " + ", ".join(library.key for library in libraries), file=sys.stderr)
+                print("Available libraries: " + available_library_keys(libraries), file=sys.stderr)
+                return 2
+            if len(selected) > 1:
+                print(f"Ambiguous library: {args.library}", file=sys.stderr)
+                print("Use one of: " + ", ".join(f"{library.source_key}.{library.key}" for library in selected), file=sys.stderr)
                 return 2
         else:
             selected = [libraries[default_index]]

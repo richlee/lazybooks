@@ -104,6 +104,88 @@ category_depth = 1
     assert manifest["books"][0]["remote_path"] == "google-drive:architecture/Reliable APIs - Ada Example.pdf"
 
 
+def test_bookindex_library_rejects_ambiguous_bare_key(tmp_path: Path) -> None:
+    config = tmp_path / "config.toml"
+    for name in ("one", "two"):
+        library = tmp_path / name / "library"
+        library.mkdir(parents=True)
+        (library / f"{name.title()} Book - Ada Example.pdf").write_text("placeholder")
+    config.write_text(
+        f"""
+default_source = "one"
+default_library = "reference"
+
+[sources.one]
+name = "One"
+remote = "one:"
+local_prefix = "{(tmp_path / "one" / "library").as_posix()}/"
+
+[sources.one.libraries.reference]
+name = "Reference"
+root = "{(tmp_path / "one" / "library").as_posix()}"
+index_dir = "{(tmp_path / "one-index").as_posix()}"
+index_remote = "one:index/reference"
+
+[sources.two]
+name = "Two"
+remote = "two:"
+local_prefix = "{(tmp_path / "two" / "library").as_posix()}/"
+
+[sources.two.libraries.reference]
+name = "Reference"
+root = "{(tmp_path / "two" / "library").as_posix()}"
+index_dir = "{(tmp_path / "two-index").as_posix()}"
+index_remote = "two:index/reference"
+"""
+    )
+
+    result = run(
+        [sys.executable, "bin/bookindex", "--config", str(config), "--library", "reference"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "Ambiguous library: reference" in result.stderr
+    assert "one.reference" in result.stderr
+    assert "two.reference" in result.stderr
+
+
+def test_bookindex_library_accepts_source_qualified_key(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    library.mkdir(parents=True)
+    (library / "Qualified Book - Ada Example.pdf").write_text("placeholder")
+    index_dir = tmp_path / "index"
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f"""
+[sources.google]
+name = "Google Drive"
+remote = "google-drive:"
+local_prefix = "{library.as_posix()}/"
+
+[sources.google.libraries.reference]
+name = "Reference"
+root = "{library.as_posix()}"
+index_dir = "{index_dir.as_posix()}"
+index_remote = "google-drive:index/reference"
+"""
+    )
+
+    result = run(
+        [sys.executable, "bin/bookindex", "--config", str(config), "--library", "google.reference"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    output = json.loads(result.stdout)
+    assert output["indexed"][0]["source"] == "google"
+    assert output["indexed"][0]["library"] == "reference"
+    assert output["indexed"][0]["books"] == 1
+
+
 def test_publish_configured_library_uses_filtered_rclone_copy(monkeypatch, tmp_path: Path) -> None:
     module = load_bookindex_module()
     calls = []
@@ -150,4 +232,3 @@ def test_publish_configured_library_uses_filtered_rclone_copy(monkeypatch, tmp_p
             True,
         )
     ]
-

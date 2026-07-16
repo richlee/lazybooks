@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lazybooks.config import DEFAULT_CONFIG, LibraryConfig, load_libraries
+from lazybooks.config import DEFAULT_CONFIG, LibraryConfig, available_library_keys, load_libraries, matching_libraries
 
 
 RCLONE_COPY = [
@@ -302,11 +302,7 @@ def publish_configured_library(library: LibraryConfig) -> None:
 def select_configured_libraries(libraries: list[LibraryConfig], key: str | None) -> list[LibraryConfig]:
     if not key:
         return libraries
-    return [
-        library
-        for library in libraries
-        if library.key == key or f"{library.source_key}.{library.key}" == key or f"{library.source_key}:{library.key}" == key
-    ]
+    return matching_libraries(libraries, key)
 
 
 def main() -> int:
@@ -330,9 +326,13 @@ def main() -> int:
         selected = select_configured_libraries(libraries, args.library)
         if not selected:
             print(f"Unknown configured library: {args.library}", file=sys.stderr)
+            print("Available libraries: " + available_library_keys(libraries), file=sys.stderr)
+            return 2
+        if args.library and len(selected) > 1:
+            print(f"Ambiguous library: {args.library}", file=sys.stderr)
             print(
-                "Available libraries: "
-                + ", ".join(f"{library.source_key}.{library.key}" for library in libraries),
+                "Use one of: "
+                + ", ".join(f"{library.source_key}.{library.key}" for library in selected),
                 file=sys.stderr,
             )
             return 2

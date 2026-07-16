@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 
 from lazybooks.books import load_books
-from lazybooks.config import DEFAULT_CONFIG, LibraryConfig, demo_root, load_libraries
+from lazybooks.config import DEFAULT_CONFIG, LibraryConfig, ambiguous_library_keys, demo_root, load_libraries
 
 
 def status_line(ok: bool, label: str, detail: str = "") -> str:
@@ -110,6 +110,12 @@ def main() -> int:
         return 1
 
     print(status_line(bool(libraries), "libraries", f"{len(libraries)} configured; default={libraries[default_index].key}"))
+    ambiguous = ambiguous_library_keys(libraries)
+    if ambiguous:
+        detail = "; ".join(f"{key} => {', '.join(values)}" for key, values in sorted(ambiguous.items()))
+        print(status_line(False, "ambiguous bare library keys", detail))
+    else:
+        print(status_line(True, "ambiguous bare library keys", "none"))
 
     failures = 0
     expected_remotes = configured_remote_names(libraries)
