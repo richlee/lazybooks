@@ -25,6 +25,9 @@ The normal workflow is:
 4. Refresh the local manifest cache on any machine.
 5. Browse locally and fetch individual PDFs on demand.
 
+For provider-specific setup, see `docs/providers.md`. For category and
+taxonomy guidance, see `docs/taxonomy.md`.
+
 ## Quick Start: Demo
 
 You can try the TUI without OneDrive, Calibre, or private book data after
@@ -323,7 +326,9 @@ bookindex \
   --index-dir "$HOME/book-indexes/tech" \
   --title "Tech Books" \
   --library-name Tech \
-  --calibre-metadata-only
+  --calibre-metadata-only \
+  --local-prefix "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/" \
+  --remote "personal-onedrive:Library/tech/"
 ```
 
 With `--calibre-metadata-only`, `bookindex` indexes PDFs referenced by Calibre's
@@ -338,11 +343,18 @@ bookindex \
   --index-dir "$HOME/book-indexes/reference" \
   --title "Reference Books" \
   --library-name Reference \
-  --category-depth 2
+  --category-depth 2 \
+  --local-prefix "$HOME/Library/CloudStorage/OneDrive-Personal/Library/reference-pdfs/" \
+  --remote "personal-onedrive:Library/reference-pdfs/"
 ```
 
 For non-Calibre folders, categories come from folder names. `--category-depth 2`
 uses the first two path components under the root.
+
+When `--local-prefix` and `--remote` are supplied, the manifest includes
+`remote_path` for each matching book. That is preferred for cross-platform use
+because `lazybooks` can fetch directly from the cloud path without relying on
+the same local folder prefix on every machine.
 
 ## Publish The Index
 
@@ -441,6 +453,8 @@ Type to filter, press Enter to fetch and open the selected book.
 The TUI categories come from each book's `category` field in `manifest.json`.
 For Calibre-backed libraries, `bookindex` currently derives that category from
 the first Calibre tag on the book.
+
+See `docs/taxonomy.md` for the full Calibre and non-Calibre workflows.
 
 Good taxonomy tags are broad enough to group related books, but specific enough
 to help browsing. Prefer a small controlled list:
@@ -620,6 +634,7 @@ Recommended captures:
       "author": "Dan Bergh Johnsson, Daniel Deogun, Daniel Sawano",
       "category": "security-reliability",
       "canonical_path": "/Users/me/Library/CloudStorage/OneDrive-Personal/Library/assurance/.../Secure by Design.pdf",
+      "remote_path": "personal-onedrive:Library/assurance/.../Secure by Design.pdf",
       "source": "Assurance Calibre",
       "size": 1234567,
       "created_at": "2026-07-14T12:00:00+00:00"
@@ -628,7 +643,9 @@ Recommended captures:
 }
 ```
 
-Additional fields are ignored.
+Additional fields are ignored. If `remote_path` is present, `lazybooks` uses it
+directly when fetching. If it is absent, `lazybooks` falls back to rewriting
+`canonical_path` using the configured `local_prefix` and `remote`.
 
 ## Safety Notes
 

@@ -198,21 +198,27 @@ def write_index(index_dir: Path, title: str, books: list[Book]) -> None:
     (index_dir / "index.html").write_text(document, encoding="utf-8")
 
 
-def write_manifest(index_dir: Path, books: list[Book]) -> None:
+def manifest_book(book: Book, local_prefix: str | None, remote: str | None) -> dict[str, object]:
+    item: dict[str, object] = {
+        "title": book.title,
+        "author": book.author,
+        "category": book.category,
+        "canonical_path": str(book.canonical_path),
+        "source": book.source,
+        "size": book.size,
+        "created_at": book.created_at,
+    }
+    if local_prefix and remote:
+        canonical = str(book.canonical_path)
+        if canonical.startswith(local_prefix):
+            item["remote_path"] = remote + canonical[len(local_prefix) :].replace("\\", "/")
+    return item
+
+
+def write_manifest(index_dir: Path, books: list[Book], local_prefix: str | None = None, remote: str | None = None) -> None:
     manifest = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "books": [
-            {
-                "title": book.title,
-                "author": book.author,
-                "category": book.category,
-                "canonical_path": str(book.canonical_path),
-                "source": book.source,
-                "size": book.size,
-                "created_at": book.created_at,
-            }
-            for book in books
-        ],
+        "books": [manifest_book(book, local_prefix, remote) for book in books],
     }
     index_dir.mkdir(parents=True, exist_ok=True)
     (index_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -226,11 +232,21 @@ def main() -> int:
     parser.add_argument("--library-name", required=True, help="Source label for non-Calibre PDFs.")
     parser.add_argument("--category-depth", type=int, default=1, help="Folder path depth to use for non-Calibre categories.")
     parser.add_argument("--calibre-metadata-only", action="store_true", help="Only index PDFs referenced by Calibre metadata.db files.")
+    parser.add_argument("--remote", help="Optional rclone remote prefix for generated remote_path values, e.g. personal-onedrive:Library/tech/.")
+    parser.add_argument("--local-prefix", help="Optional local path prefix to replace with --remote when writing remote_path values.")
     args = parser.parse_args()
 
     books = scan_books(args.root, args.library_name, max(1, args.category_depth), args.calibre_metadata_only)
     write_index(args.index_dir, args.title, books)
-    write_manifest(args.index_dir, books)
+    local_prefix = None
+    if args.local_prefix:
+        local_prefix = str(Path(args.local_prefix).expanduser())
+        if not local_prefix.endswith(os.sep):
+            local_prefix += os.sep
+    remote = args.remote
+    if remote and not remote.endswith("/"):
+        remote += "/"
+    write_manifest(args.index_dir, books, local_prefix, remote)
     print(json.dumps({"books": len(books), "index": str(args.index_dir / "index.html"), "manifest": str(args.index_dir / "manifest.json")}, indent=2))
     return 0
 
