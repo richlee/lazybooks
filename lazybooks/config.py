@@ -65,7 +65,7 @@ def load_libraries(config_path: str | Path | None = DEFAULT_CONFIG) -> tuple[lis
     if not config_path.exists():
         return fallback_library(), 0
 
-    config_text = config_path.read_text().replace("{demo_root}", str(demo_root()))
+    config_text = config_path.read_text().replace("{demo_root}", demo_root().as_posix())
     data = tomllib.loads(config_text)
     default_key = str(data.get("default", ""))
     global_cache = str(data.get("cache", os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")))
