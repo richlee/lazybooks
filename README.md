@@ -71,7 +71,6 @@ py -m venv .venv
 - `lazybooks doctor`: check dependencies, config, manifests, cache paths, and rclone basics.
 - `lazybooks doctor --demo`: check the packaged demo library.
 - `lazybooks-doctor`: the same health check as a standalone command.
-- `lazybooks-curses`: legacy fallback for the original curses TUI.
 - `bookrefresh`: copies `index.html` and `manifest.json` from configured cloud providers into a local cache.
 - `bookfind`: searches a manifest from the command line and fetches one selected PDF.
 - `bookpick`: uses `fzf` as a fast picker and fetches one selected PDF.
@@ -496,12 +495,7 @@ PDFs.
 lazybooks
 ```
 
-`lazybooks` is the Textual TUI from v0.2 onward. The original curses
-implementation is available as a legacy fallback:
-
-```sh
-lazybooks-curses
-```
+`lazybooks` is the Textual TUI.
 
 Keys:
 

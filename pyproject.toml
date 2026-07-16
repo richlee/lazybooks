@@ -39,7 +39,6 @@ dev = ["pytest>=8", "build>=1.5", "twine>=6.2"]
 [project.scripts]
 lazybooks = "lazybooks.tui.textual_app:main"
 lazybooks-doctor = "lazybooks.cli.doctor:main"
-lazybooks-curses = "lazybooks.tui.curses_app:run"
 bookfind = "lazybooks.cli.find:main"
 bookindex = "lazybooks.cli.index:main"
 bookpick = "lazybooks.cli.pick:main"
