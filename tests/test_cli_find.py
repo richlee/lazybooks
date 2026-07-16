@@ -7,7 +7,7 @@ from lazybooks.cli.find import main
 
 def test_bookfind_lists_sorted_matches(monkeypatch, capsys, library) -> None:
     monkeypatch.setattr(sys, "argv", ["bookfind", "--library", "test", "example"])
-    monkeypatch.setattr("lazybooks.cli.find.load_libraries", lambda: ([library], 0))
+    monkeypatch.setattr("lazybooks.cli.find.load_libraries", lambda config_path=None: ([library], 0))
 
     assert main() == 0
 
@@ -19,7 +19,7 @@ def test_bookfind_lists_sorted_matches(monkeypatch, capsys, library) -> None:
 
 def test_bookfind_rejects_unknown_library(monkeypatch, capsys, library) -> None:
     monkeypatch.setattr(sys, "argv", ["bookfind", "--library", "missing", "example"])
-    monkeypatch.setattr("lazybooks.cli.find.load_libraries", lambda: ([library], 0))
+    monkeypatch.setattr("lazybooks.cli.find.load_libraries", lambda config_path=None: ([library], 0))
 
     assert main() == 2
 

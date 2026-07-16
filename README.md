@@ -17,6 +17,23 @@ The normal workflow is:
 4. Refresh the local manifest cache on any machine.
 5. Browse locally and fetch individual PDFs on demand.
 
+## Quick Demo
+
+You can try the TUI without OneDrive, Calibre, or private book data:
+
+```sh
+git clone https://github.com/richlee/lazybooks.git
+cd lazybooks
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/lazybooks --config examples/demo/config.toml
+```
+
+The demo data is intentionally tiny and lives in `examples/demo/`. It is useful
+for screenshots, testing navigation, switching libraries, search, details, and
+cache markers. Opening uncached demo books is expected to fail because the demo
+uses a fake `demo:` rclone remote.
+
 ## Commands
 
 - `lazybooks`: full terminal UI with categories, search, cache state, PDF fetch/open, and cached-copy delete.
@@ -417,13 +434,27 @@ Before a release, also run:
 
 The core v0.2 product is usable, but a more public-facing release still needs:
 
-- screenshots or a short terminal GIF
 - cross-platform smoke testing on macOS, Linux, and Windows
 - confirmation of `rclone`, path, and file-opening behaviour on each platform
 - a short GitHub release note for each tagged release
 - a decision on whether to move remaining helper scripts into package entry points
 
 Use `docs/cross-platform-checklist.md` for platform test passes.
+
+### Screenshots And GIFs
+
+Use the demo data so screenshots do not expose a personal library:
+
+```sh
+.venv/bin/lazybooks --config examples/demo/config.toml
+```
+
+Recommended captures:
+
+- main TUI with Engineering selected and a cached `C` marker visible
+- search open with a filtered result set
+- Book Details modal
+- optional short GIF: switch library, change category, search, open details
 
 ## Search From The CLI
 

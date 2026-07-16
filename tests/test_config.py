@@ -38,3 +38,11 @@ index_remote = "personal-onedrive:Library/book-indexes/tech"
 def test_rewrite_remote() -> None:
     assert rewrite_remote("old:Library/books", "old:", "new:") == "new:Library/books"
     assert rewrite_remote("other:Library/books", "old:", "new:") == "other:Library/books"
+
+
+def test_demo_config_loads() -> None:
+    libraries, default_index = load_libraries("examples/demo/config.toml")
+
+    assert [library.key for library in libraries] == ["engineering", "personal"]
+    assert libraries[default_index].key == "engineering"
+    assert libraries[0].manifest.exists()

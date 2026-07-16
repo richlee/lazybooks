@@ -55,7 +55,8 @@ def rewrite_remote(remote_path: str, old_remote: str, new_remote: str) -> str:
     return remote_path
 
 
-def load_libraries(config_path: Path = DEFAULT_CONFIG) -> tuple[list[LibraryConfig], int]:
+def load_libraries(config_path: str | Path | None = DEFAULT_CONFIG) -> tuple[list[LibraryConfig], int]:
+    config_path = expand_path(str(config_path)) if config_path is not None else DEFAULT_CONFIG
     if not config_path.exists():
         return fallback_library(), 0
 
@@ -101,4 +102,3 @@ def select_library(libraries: list[LibraryConfig], default_index: int, key: str 
     if not key:
         return libraries[default_index]
     return next((library for library in libraries if library.key == key), None)
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from lazybooks.config import load_libraries
 from lazybooks.refresh import RefreshError, refresh_library, report_refresh_error
@@ -9,11 +10,12 @@ from lazybooks.refresh import RefreshError, refresh_library, report_refresh_erro
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Refresh lazybooks index files from rclone remotes.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
     parser.add_argument("library", nargs="?", help="Library key to refresh. Defaults to configured default.")
     parser.add_argument("--all", action="store_true", help="Refresh all configured libraries.")
     args = parser.parse_args()
 
-    libraries, default_index = load_libraries()
+    libraries, default_index = load_libraries(Path(args.config).expanduser() if args.config else None)
     selected = libraries
     if not args.all:
         if args.library:

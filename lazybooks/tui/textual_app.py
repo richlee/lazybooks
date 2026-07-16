@@ -629,12 +629,13 @@ class LazyBooksApp(App[None]):
 def main() -> int:
     parser = argparse.ArgumentParser(description="Browse lazybooks libraries.")
     parser.add_argument("--version", "-V", action="store_true", help="Show version and exit.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
     args = parser.parse_args()
     if args.version:
         print(version_label())
         return 0
 
-    libraries, default_index = load_libraries()
+    libraries, default_index = load_libraries(args.config)
     LazyBooksApp(libraries, default_index).run()
     return 0
 
