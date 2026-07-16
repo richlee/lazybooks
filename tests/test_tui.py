@@ -6,7 +6,7 @@ from pathlib import Path
 import lazybooks.tui.textual_app as textual_app
 from lazybooks.config import LibraryConfig, SourceConfig
 from lazybooks.tui.textual_app import LazyBooksApp, MessageModal
-from textual.widgets import Input, ListView
+from textual.widgets import Input, ListView, Static
 
 
 def run_async(coro):
@@ -105,6 +105,27 @@ def test_source_switch_changes_available_libraries(tmp_path: Path, library) -> N
             assert app.source.key == "google"
             assert app.library.key == "personal"
             assert app.visible()[0].title == "Gamma Google"
+
+    run_async(scenario())
+
+
+def test_source_row_shows_shortcut_brackets(library) -> None:
+    async def scenario() -> None:
+        app = LazyBooksApp(
+            [
+                SourceConfig("onedrive", "OneDrive", [library]),
+                SourceConfig("google", "Google Drive", [library]),
+            ],
+            0,
+            0,
+        )
+        async with app.run_test() as pilot:
+            await pilot.pause(0.2)
+            sources = app.query_one("#sources", Static)
+            rendered = sources.render()
+            text = rendered.plain if hasattr(rendered, "plain") else str(rendered)
+            assert "[a] OneDrive" in text
+            assert "[b] Google Drive" in text
 
     run_async(scenario())
 

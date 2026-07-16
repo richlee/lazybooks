@@ -5,6 +5,7 @@ import sys
 import textwrap
 from dataclasses import dataclass
 
+from rich.markup import escape
 from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -370,14 +371,14 @@ class LazyBooksApp(App[None]):
         labels = []
         for index, source in enumerate(self.sources[: len(SOURCE_SHORTCUTS)]):
             shortcut = SOURCE_SHORTCUTS[index]
-            label = f"[{shortcut}] {source.name}"
+            label = f"\\[{shortcut}] {escape(source.name)}"
             labels.append(f"[reverse]{label}[/]" if index == self.source_index else label)
         self.query_one("#sources", Static).update(f"Sources: {'  '.join(labels)}")
 
     def update_tabs(self) -> None:
         labels = []
         for index, library in enumerate(self.libraries[:MAX_LIBRARY_SHORTCUTS], start=1):
-            label = f"[{index}] {library.name}"
+            label = f"\\[{index}] {escape(library.name)}"
             labels.append(f"[reverse]{label}[/]" if index - 1 == self.library_index else label)
         self.query_one("#tabs", Static).update(f"Libraries: {'  '.join(labels)}")
 
