@@ -118,12 +118,6 @@ lazybooks --demo
 lazybooks doctor --demo
 ```
 
-Until `lazybooks` is published to PyPI, install from GitHub:
-
-```sh
-pipx install git+https://github.com/richlee/lazybooks.git
-```
-
 `pipx` installs Python dependencies such as Textual. It does not install system
 tools. For a real cloud-backed library you still need:
 
@@ -137,7 +131,7 @@ On macOS:
 ```sh
 brew install pipx rclone fzf
 pipx ensurepath
-pipx install git+https://github.com/richlee/lazybooks.git
+pipx install lazybooks
 ```
 
 On Windows PowerShell:
@@ -147,7 +141,7 @@ winget install Python.Python.3.13
 winget install Rclone.Rclone
 py -m pip install --user pipx
 py -m pipx ensurepath
-pipx install git+https://github.com/richlee/lazybooks.git
+pipx install lazybooks
 ```
 
 After installing, run:

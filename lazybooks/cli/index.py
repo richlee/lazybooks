@@ -1,0 +1,383 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+from lazybooks.config import DEFAULT_CONFIG, LibraryConfig, available_library_keys, load_libraries, matching_libraries
+
+
+RCLONE_COPY = [
+    "rclone",
+    "copy",
+    "{source}",
+    "{target}",
+    "--filter",
+    "+ index.html",
+    "--filter",
+    "+ manifest.json",
+    "--filter",
+    "- *",
+]
+
+
+@dataclass
+class Book:
+    title: str
+    author: str
+    category: str
+    canonical_path: Path
+    source: str
+    size: int
+    created_at: str
+
+
+def created_at(path: Path) -> datetime:
+    stat = path.stat()
+    return datetime.fromtimestamp(getattr(stat, "st_birthtime", stat.st_mtime), timezone.utc)
+
+
+def label_category(category: str) -> str:
+    return category.replace("-", " ").replace("_", " ").title()
+
+
+def slug(value: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9]+", "-", value.strip()).strip("-").casefold()
+    return value or "uncategorised"
+
+
+def parse_title_author(path: Path) -> tuple[str, str]:
+    stem = path.stem
+    if " - " not in stem:
+        return stem.strip(), "Unknown"
+    title, author = stem.rsplit(" - ", 1)
+    return title.strip(), author.strip() or "Unknown"
+
+
+def clean_author(value: str) -> str:
+    value = value.replace("|", ", ")
+    parts = [re.sub(r"\s+", " ", part).strip() for part in value.split(",")]
+    seen: set[str] = set()
+    authors: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        key = part.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        authors.append(part)
+    return ", ".join(authors) or "Unknown"
+
+
+def load_calibre_books(library: Path, category: str, source: str) -> dict[Path, Book]:
+    db = library / "metadata.db"
+    if not db.exists():
+        return {}
+
+    books: dict[Path, Book] = {}
+    with sqlite3.connect(db) as conn:
+        conn.row_factory = sqlite3.Row
+        query = """
+            select
+              b.id,
+              b.title,
+              b.path,
+              d.name as data_name,
+              d.format,
+              coalesce(group_concat(distinct a.name), 'Unknown') as authors,
+              coalesce(group_concat(distinct t.name), '') as tags
+            from books b
+            join data d on d.book = b.id
+            left join books_authors_link bal on bal.book = b.id
+            left join authors a on a.id = bal.author
+            left join books_tags_link btl on btl.book = b.id
+            left join tags t on t.id = btl.tag
+            where lower(d.format) = 'pdf'
+            group by b.id, d.id
+            order by b.title
+        """
+        for row in conn.execute(query):
+            path = library / row["path"] / f"{row['data_name']}.{row['format'].lower()}"
+            if not path.exists():
+                continue
+            tags = [tag.strip() for tag in (row["tags"] or "").split(",") if tag.strip()]
+            book_category = slug(tags[0]) if tags else category
+            books[path.resolve()] = Book(
+                title=row["title"] or path.stem,
+                author=clean_author(row["authors"] or "Unknown"),
+                category=book_category,
+                canonical_path=path,
+                source=source,
+                size=path.stat().st_size,
+                created_at=created_at(path).isoformat(),
+            )
+    return books
+
+
+def folder_category(root: Path, path: Path, library_name: str, category_depth: int) -> str:
+    rel = path.relative_to(root)
+    if len(rel.parts) <= 1:
+        return slug(library_name)
+    parts = rel.parts[: max(1, min(category_depth, len(rel.parts) - 1))]
+    return slug(" ".join(parts))
+
+
+def scan_books(root: Path, library_name: str, category_depth: int, calibre_metadata_only: bool) -> list[Book]:
+    calibre_dirs = [path for path in root.rglob("metadata.db") if path.parent.is_dir()]
+    calibre_books: dict[Path, Book] = {}
+    calibre_roots: list[Path] = []
+    for db in calibre_dirs:
+        library = db.parent
+        calibre_roots.append(library)
+        category = slug(library.name.replace("-library-calibre", "").replace("library-calibre", ""))
+        source = f"{library_name} Calibre"
+        calibre_books.update(load_calibre_books(library, category, source))
+
+    books = dict(calibre_books)
+    if calibre_metadata_only:
+        return sorted(books.values(), key=lambda book: (book.category.casefold(), book.title.casefold()))
+
+    for path in sorted(root.rglob("*.pdf"), key=lambda item: str(item).casefold()):
+        if ".caltrash" in path.parts or ".calnotes" in path.parts:
+            continue
+        resolved = path.resolve()
+        if resolved in books:
+            continue
+        title, author = parse_title_author(path)
+        category = folder_category(root, path, library_name, category_depth)
+        books[resolved] = Book(
+            title=title,
+            author=author,
+            category=category,
+            canonical_path=path,
+            source=f"{library_name} Folder",
+            size=path.stat().st_size,
+            created_at=created_at(path).isoformat(),
+        )
+    return sorted(books.values(), key=lambda book: (book.category.casefold(), book.title.casefold()))
+
+
+def rel_href(index_dir: Path, path: Path) -> str:
+    return Path(os.path.relpath(path, index_dir)).as_posix()
+
+
+def write_index(index_dir: Path, title: str, books: list[Book]) -> None:
+    grouped: dict[str, list[Book]] = defaultdict(list)
+    for book in books:
+        grouped[book.category].append(book)
+
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    sections: list[str] = []
+    for category in sorted(grouped, key=str.casefold):
+        items = []
+        for book in sorted(grouped[category], key=lambda item: item.title.casefold()):
+            source = f' <span class="source">{html.escape(book.source)}</span>'
+            href = html.escape(rel_href(index_dir, book.canonical_path))
+            items.append(f'<li><a href="{href}">{html.escape(book.title)}</a>{source}</li>')
+        sections.append(f"<section><h2>{html.escape(label_category(category))}</h2><ul>{''.join(items)}</ul></section>")
+
+    document = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{html.escape(title)}</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 2rem auto; max-width: 76rem; padding: 0 1rem; line-height: 1.5; }}
+    h1 {{ margin-bottom: 0.25rem; }}
+    .meta {{ color: #555; margin-top: 0; }}
+    .source {{ color: #667085; font-size: 0.78rem; margin-left: 0.3rem; white-space: nowrap; }}
+    section {{ margin: 2rem 0; }}
+    ul {{ columns: 2; column-gap: 2rem; padding-left: 1.25rem; }}
+    li {{ break-inside: avoid; margin-bottom: 0.35rem; }}
+    @media (max-width: 900px) {{ ul {{ columns: 1; }} }}
+  </style>
+</head>
+<body>
+  <h1>{html.escape(title)}</h1>
+  <p class="meta">Generated {html.escape(generated)}. {len(books)} PDFs indexed.</p>
+  {''.join(sections)}
+</body>
+</html>
+"""
+    index_dir.mkdir(parents=True, exist_ok=True)
+    (index_dir / "index.html").write_text(document, encoding="utf-8")
+
+
+def manifest_book(book: Book, local_prefix: str | None, remote: str | None) -> dict[str, object]:
+    item: dict[str, object] = {
+        "title": book.title,
+        "author": book.author,
+        "category": book.category,
+        "canonical_path": str(book.canonical_path),
+        "source": book.source,
+        "size": book.size,
+        "created_at": book.created_at,
+    }
+    if local_prefix and remote:
+        canonical = str(book.canonical_path)
+        if canonical.startswith(local_prefix):
+            item["remote_path"] = remote + canonical[len(local_prefix) :].replace("\\", "/")
+    return item
+
+
+def write_manifest(index_dir: Path, books: list[Book], local_prefix: str | None = None, remote: str | None = None) -> None:
+    manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "books": [manifest_book(book, local_prefix, remote) for book in books],
+    }
+    index_dir.mkdir(parents=True, exist_ok=True)
+    (index_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def build_index(
+    *,
+    root: Path,
+    index_dir: Path,
+    title: str,
+    library_name: str,
+    category_depth: int,
+    calibre_metadata_only: bool,
+    local_prefix: str | None,
+    remote: str | None,
+) -> dict[str, object]:
+    books = scan_books(root, library_name, max(1, category_depth), calibre_metadata_only)
+    write_index(index_dir, title, books)
+    if local_prefix:
+        local_prefix = str(Path(local_prefix).expanduser())
+        if not local_prefix.endswith(os.sep):
+            local_prefix += os.sep
+    if remote and not remote.endswith(("/", ":")):
+        remote += "/"
+    write_manifest(index_dir, books, local_prefix, remote)
+    return {"books": len(books), "index": str(index_dir / "index.html"), "manifest": str(index_dir / "manifest.json")}
+
+
+def build_configured_library(library: LibraryConfig) -> dict[str, object]:
+    if library.root is None:
+        raise ValueError(
+            f"{library.source_key}.{library.key} has no root configured. "
+            f"Add root = \"...\" under [sources.{library.source_key}.libraries.{library.key}]."
+        )
+    return {
+        "source": library.source_key,
+        "library": library.key,
+        **build_index(
+            root=library.root,
+            index_dir=library.index_dir,
+            title=library.title or f"{library.name} Books",
+            library_name=library.library_name or library.name,
+            category_depth=library.category_depth,
+            calibre_metadata_only=library.calibre_metadata_only,
+            local_prefix=library.local_prefix,
+            remote=library.remote,
+        ),
+    }
+
+
+def publish_configured_library(library: LibraryConfig) -> None:
+    if not library.index_remote:
+        raise ValueError(f"{library.source_key}.{library.key} has no index_remote configured.")
+    command = [
+        part.format(source=str(library.index_dir), target=library.index_remote)
+        for part in RCLONE_COPY
+    ]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"rclone exited with {result.returncode}")
+
+
+def select_configured_libraries(libraries: list[LibraryConfig], key: str | None) -> list[LibraryConfig]:
+    if not key:
+        return libraries
+    return matching_libraries(libraries, key)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Build a lazybooks index from a folder of PDFs.")
+    parser.add_argument("--all", action="store_true", help="Build indexes for every configured library with a root.")
+    parser.add_argument("--publish", action="store_true", help="Upload generated index.html and manifest.json to configured index_remote.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--library", help="Configured library key to build, e.g. tech or onedrive.tech.")
+    parser.add_argument("--root", type=Path, help="PDF library root.")
+    parser.add_argument("--index-dir", type=Path, help="Output directory.")
+    parser.add_argument("--title", help="Index title.")
+    parser.add_argument("--library-name", help="Source label for non-Calibre PDFs.")
+    parser.add_argument("--category-depth", type=int, default=1, help="Folder path depth to use for non-Calibre categories.")
+    parser.add_argument("--calibre-metadata-only", action="store_true", help="Only index PDFs referenced by Calibre metadata.db files.")
+    parser.add_argument("--remote", help="Optional rclone remote prefix for generated remote_path values, e.g. personal-onedrive:Library/tech/.")
+    parser.add_argument("--local-prefix", help="Optional local path prefix to replace with --remote when writing remote_path values.")
+    args = parser.parse_args()
+
+    if args.all or args.library:
+        libraries, _default_index = load_libraries(Path(args.config).expanduser() if args.config else DEFAULT_CONFIG)
+        selected = select_configured_libraries(libraries, args.library)
+        if not selected:
+            print(f"Unknown configured library: {args.library}", file=sys.stderr)
+            print("Available libraries: " + available_library_keys(libraries), file=sys.stderr)
+            return 2
+        if args.library and len(selected) > 1:
+            print(f"Ambiguous library: {args.library}", file=sys.stderr)
+            print(
+                "Use one of: "
+                + ", ".join(f"{library.source_key}.{library.key}" for library in selected),
+                file=sys.stderr,
+            )
+            return 2
+        results = []
+        failures = 0
+        for library in selected:
+            try:
+                result = build_configured_library(library)
+                if args.publish:
+                    publish_configured_library(library)
+                    result["published"] = library.index_remote
+                results.append(result)
+            except Exception as exc:
+                failures += 1
+                action = "Index/publish" if args.publish else "Index"
+                print(f"{action} failed for {library.source_key}.{library.key}: {exc}", file=sys.stderr)
+        print(json.dumps({"indexed": results, "failures": failures}, indent=2))
+        return 1 if failures else 0
+
+    missing = [
+        option
+        for option, value in {
+            "--root": args.root,
+            "--index-dir": args.index_dir,
+            "--title": args.title,
+            "--library-name": args.library_name,
+        }.items()
+        if value is None
+    ]
+    if missing:
+        parser.error("the following arguments are required unless --all or --library is used: " + ", ".join(missing))
+
+    result = build_index(
+        root=args.root,
+        index_dir=args.index_dir,
+        title=args.title,
+        library_name=args.library_name,
+        category_depth=args.category_depth,
+        calibre_metadata_only=args.calibre_metadata_only,
+        local_prefix=args.local_prefix,
+        remote=args.remote,
+    )
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

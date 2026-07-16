@@ -1,0 +1,474 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import os
+import re
+import shutil
+import sqlite3
+import tomllib
+from collections import Counter
+from dataclasses import dataclass
+from datetime import datetime
+from importlib import resources
+from pathlib import Path
+
+from lazybooks.config import LibraryConfig, available_library_keys, load_libraries, matching_libraries, qualified_library_key
+
+
+DEFAULT_TAXONOMY_CONFIG = Path(os.environ.get("LAZYBOOKS_TAXONOMY_CONFIG", "~/.config/lazybooks/taxonomy.toml")).expanduser()
+
+
+@dataclass(frozen=True)
+class MetadataBook:
+    id: int
+    library: str
+    title: str
+    authors: str
+    tags: str
+    comments: str
+    canonical_path: str
+    db_path: Path
+
+
+@dataclass(frozen=True)
+class Proposal:
+    book: MetadataBook
+    category: str
+    confidence: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class TaxonomyRule:
+    category: str
+    keywords: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TaxonomyProfile:
+    key: str
+    manual_review_category: str
+    min_recurring_tag_count: int
+    noisy_tags: frozenset[str]
+    rules: tuple[TaxonomyRule, ...]
+
+
+@dataclass(frozen=True)
+class TaxonomyConfig:
+    path: Path | None
+    library_profiles: dict[str, str]
+    profiles: dict[str, TaxonomyProfile]
+
+
+def normalize(value: str) -> str:
+    value = re.sub(r"<[^>]+>", " ", value)
+    value = value.replace("%2B", " ").replace("_", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", value).strip().casefold()
+
+
+def split_tags(value: str) -> list[str]:
+    return [tag.strip() for tag in value.split(",") if tag.strip()]
+
+
+def useful_tags(
+    value: str,
+    noisy_tags: frozenset[str],
+    tag_counts: Counter[str] | None = None,
+    min_count: int = 1,
+) -> list[str]:
+    tags = []
+    for tag in split_tags(value):
+        key = normalize(tag)
+        if key in noisy_tags or re.fullmatch(r"meap v?\d+", key):
+            continue
+        if key.startswith("team "):
+            continue
+        if tag_counts is not None and tag_counts[key] < min_count:
+            continue
+        tags.append(tag)
+    return tags
+
+
+def recurring_tag_counts(books: list[MetadataBook], profile: TaxonomyProfile) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for book in books:
+        counts.update({normalize(tag) for tag in useful_tags(book.tags, profile.noisy_tags)})
+    return counts
+
+
+def clean_author(value: str) -> str:
+    parts = [re.sub(r"\s+", " ", part).strip() for part in re.split(r"[,|;]", value or "")]
+    seen: set[str] = set()
+    authors: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        key = part.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        authors.append(part)
+    return ", ".join(authors) or "Unknown"
+
+
+def find_calibre_root(path: Path) -> Path | None:
+    for parent in [path.parent, *path.parents]:
+        if (parent / "metadata.db").exists():
+            return parent
+    return None
+
+
+def load_db_books(library: LibraryConfig) -> list[MetadataBook]:
+    if not library.manifest.exists():
+        return []
+
+    manifest = json.loads(library.manifest.read_text())
+    roots = {
+        root
+        for item in manifest.get("books", [])
+        if (root := find_calibre_root(Path(str(item.get("canonical_path", "")))))
+    }
+
+    books: list[MetadataBook] = []
+    for root in sorted(roots, key=lambda path: str(path).casefold()):
+        with sqlite3.connect(root / "metadata.db") as conn:
+            conn.row_factory = sqlite3.Row
+            query = """
+                select
+                  b.id,
+                  b.title,
+                  b.path,
+                  (
+                    select d.name || '.' || lower(d.format)
+                    from data d
+                    where d.book = b.id
+                    order by d.format collate nocase
+                    limit 1
+                  ) as data_file,
+                  coalesce(group_concat(distinct a.name), 'Unknown') as authors,
+                  coalesce(group_concat(distinct t.name), '') as tags,
+                  coalesce(c.text, '') as comments
+                from books b
+                left join books_authors_link bal on bal.book = b.id
+                left join authors a on a.id = bal.author
+                left join books_tags_link btl on btl.book = b.id
+                left join tags t on t.id = btl.tag
+                left join comments c on c.book = b.id
+                group by b.id
+                order by b.title collate nocase
+            """
+            for row in conn.execute(query):
+                path = root / row["path"] / (row["data_file"] or "")
+                books.append(
+                    MetadataBook(
+                        id=int(row["id"]),
+                        library=library.key,
+                        title=row["title"] or path.stem,
+                        authors=clean_author(row["authors"] or "Unknown"),
+                        tags=row["tags"] or "",
+                        comments=row["comments"] or "",
+                        canonical_path=str(path),
+                        db_path=root / "metadata.db",
+                    )
+                )
+    return books
+
+
+def match_any(text: str, words: tuple[str, ...]) -> str | None:
+    for word in words:
+        if word in text:
+            return word
+    return None
+
+
+def merge_dicts(base: dict, override: dict) -> dict:
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = merge_dicts(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def bundled_taxonomy_data() -> dict:
+    text = resources.files("lazybooks").joinpath("default_taxonomy.toml").read_text(encoding="utf-8")
+    return tomllib.loads(text)
+
+
+def load_taxonomy_config(path: Path | None = DEFAULT_TAXONOMY_CONFIG) -> TaxonomyConfig:
+    data = bundled_taxonomy_data()
+    used_path: Path | None = None
+    if path is not None:
+        path = path.expanduser()
+        if path.exists():
+            data = merge_dicts(data, tomllib.loads(path.read_text(encoding="utf-8")))
+            used_path = path
+
+    defaults = data.get("defaults", {})
+    default_min_count = int(defaults.get("min_recurring_tag_count", 2))
+    default_noisy_tags = frozenset(normalize(str(tag)) for tag in defaults.get("noisy_tags", []))
+    profiles: dict[str, TaxonomyProfile] = {}
+    for profile_key, values in data.get("profiles", {}).items():
+        if not isinstance(values, dict):
+            continue
+        noisy_tags = set(default_noisy_tags)
+        noisy_tags.update(normalize(str(tag)) for tag in values.get("noisy_tags", []))
+        rules = []
+        for item in values.get("rules", []):
+            if not isinstance(item, dict):
+                continue
+            category = str(item.get("category", "")).strip()
+            keywords = tuple(str(keyword).casefold() for keyword in item.get("keywords", []) if str(keyword).strip())
+            if category and keywords:
+                rules.append(TaxonomyRule(category=category, keywords=keywords))
+        profiles[str(profile_key)] = TaxonomyProfile(
+            key=str(profile_key),
+            manual_review_category=str(values.get("manual_review_category", f"{profile_key}-manual-review")),
+            min_recurring_tag_count=int(values.get("min_recurring_tag_count", default_min_count)),
+            noisy_tags=frozenset(noisy_tags),
+            rules=tuple(rules),
+        )
+
+    library_profiles = {str(key): str(value) for key, value in data.get("libraries", {}).items()}
+    return TaxonomyConfig(path=used_path, library_profiles=library_profiles, profiles=profiles)
+
+
+def profile_for_library(library: LibraryConfig, taxonomy: TaxonomyConfig) -> TaxonomyProfile:
+    profile_key = (
+        taxonomy.library_profiles.get(qualified_library_key(library))
+        or taxonomy.library_profiles.get(f"{library.source_key}:{library.key}")
+        or taxonomy.library_profiles.get(library.key)
+        or (library.key if library.key in taxonomy.profiles else "")
+    )
+    if profile_key and profile_key in taxonomy.profiles:
+        return taxonomy.profiles[profile_key]
+    return TaxonomyProfile(
+        key="default",
+        manual_review_category=f"{library.key}-manual-review",
+        min_recurring_tag_count=2,
+        noisy_tags=frozenset(),
+        rules=(),
+    )
+
+
+def classify(book: MetadataBook, tag_counts: Counter[str], profile: TaxonomyProfile) -> Proposal:
+    text = normalize(" ".join([book.title, book.authors, book.tags, book.comments]))
+    tags = useful_tags(book.tags, profile.noisy_tags, tag_counts, min_count=profile.min_recurring_tag_count)
+    tag_text = normalize(" ".join(tags))
+
+    for rule in profile.rules:
+        hit = match_any(text, rule.keywords)
+        if hit:
+            confidence = "high" if hit in tag_text or hit in normalize(book.title) else "medium"
+            return Proposal(book, rule.category, confidence, hit)
+
+    if tags:
+        return Proposal(book, profile.manual_review_category, "low", f"unmapped tag: {tags[0]}")
+    return Proposal(book, profile.manual_review_category, "low", "insufficient metadata")
+
+
+def write_csv(path: Path, proposals: list[Proposal], tag_counts: Counter[str], profile: TaxonomyProfile) -> None:
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["library", "title", "authors", "current_tags", "recurring_tags", "proposed_category", "confidence", "reason"])
+        for proposal in proposals:
+            writer.writerow(
+                [
+                    proposal.book.library,
+                    proposal.book.title,
+                    proposal.book.authors,
+                    proposal.book.tags,
+                    "; ".join(useful_tags(proposal.book.tags, profile.noisy_tags, tag_counts, min_count=profile.min_recurring_tag_count)),
+                    proposal.category,
+                    proposal.confidence,
+                    proposal.reason,
+                ]
+            )
+
+
+def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]], profiles_by_library: dict[str, TaxonomyProfile]) -> None:
+    lines = [
+        "# Lazybooks Taxonomy Proposal",
+        "",
+        "Generated from Calibre title, author, tag, and comment metadata. Review artifact only; it does not write back to Calibre or change manifests.",
+        "",
+        "Intent: replace noisy first-tag categories such as `self`, `personal`, `tech`, `unknown`, and `MEAP Vnn` with a small browsing taxonomy.",
+        "",
+    ]
+
+    for library, proposals in proposals_by_library.items():
+        profile = profiles_by_library[library]
+        counts = Counter(proposal.category for proposal in proposals)
+        confidence = Counter(proposal.confidence for proposal in proposals)
+        lines.extend(
+            [
+                f"## {library.title()}",
+                "",
+                f"- Books: {len(proposals)}",
+                f"- Profile: `{profile.key}`",
+                f"- Rules: {len(profile.rules)}",
+                f"- Confidence: high {confidence['high']}, medium {confidence['medium']}, low {confidence['low']}",
+                "",
+                "| Proposed category | Count |",
+                "|---|---:|",
+            ]
+        )
+        for category, count in counts.most_common():
+            lines.append(f"| `{category}` | {count} |")
+        lines.extend(["", f"Detail CSV: `reports/{library}-taxonomy-proposal.csv`", ""])
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def explain_library(library: LibraryConfig, taxonomy: TaxonomyConfig, output_dir: Path) -> None:
+    profile = profile_for_library(library, taxonomy)
+    books = load_db_books(library)
+    tag_counts = recurring_tag_counts(books, profile)
+    proposals = [classify(book, tag_counts, profile) for book in books]
+    category_counts = Counter(proposal.category for proposal in proposals)
+    confidence = Counter(proposal.confidence for proposal in proposals)
+
+    print(f"Library: {qualified_library_key(library)} ({library.name})")
+    print(f"Profile: {profile.key}")
+    print(f"Taxonomy config: {taxonomy.path or 'bundled defaults'}")
+    print(f"Calibre books found: {len(books)}")
+    print(f"Rules: {len(profile.rules)}")
+    print(f"Manual-review category: {profile.manual_review_category}")
+    print(f"Recurring tag threshold: {profile.min_recurring_tag_count}")
+    print(f"Report CSV: {output_dir / f'{library.key}-taxonomy-proposal.csv'}")
+    print("")
+    print(f"Confidence: high {confidence['high']}, medium {confidence['medium']}, low {confidence['low']}")
+    print("")
+    print("Top proposed categories:")
+    for category, count in category_counts.most_common(12):
+        print(f"  {category}: {count}")
+    print("")
+    print("Top recurring tags:")
+    for tag, count in tag_counts.most_common(12):
+        print(f"  {tag}: {count}")
+    print("")
+    print("Configured rules:")
+    for rule in profile.rules:
+        preview = ", ".join(rule.keywords[:6])
+        suffix = "..." if len(rule.keywords) > 6 else ""
+        print(f"  {rule.category}: {preview}{suffix}")
+
+
+def ensure_tag(conn: sqlite3.Connection, name: str) -> int:
+    row = conn.execute("select id from tags where name = ? collate nocase", (name,)).fetchone()
+    if row:
+        return int(row[0])
+    cursor = conn.execute("insert into tags(name) values (?)", (name,))
+    return int(cursor.lastrowid)
+
+
+def backup_db(db_path: Path) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = db_path.with_name(f"{db_path.name}.lazybooks-backup-{timestamp}")
+    shutil.copy2(db_path, backup)
+    return backup
+
+
+def apply_proposals(proposals: list[Proposal]) -> list[tuple[Path, int, Path]]:
+    applied: list[tuple[Path, int, Path]] = []
+    for db_path in sorted({proposal.book.db_path for proposal in proposals}, key=lambda path: str(path).casefold()):
+        db_proposals = [proposal for proposal in proposals if proposal.book.db_path == db_path]
+        backup = backup_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            with conn:
+                for proposal in db_proposals:
+                    tag_id = ensure_tag(conn, proposal.category)
+                    conn.execute("delete from books_tags_link where book = ?", (proposal.book.id,))
+                    conn.execute(
+                        "insert or ignore into books_tags_link(book, tag) values (?, ?)",
+                        (proposal.book.id, tag_id),
+                    )
+                conn.execute(
+                    """
+                    delete from tags
+                    where id not in (select distinct tag from books_tags_link)
+                    """
+                )
+        applied.append((db_path, len(db_proposals), backup))
+    return applied
+
+
+def report_key(library: LibraryConfig, selected: list[LibraryConfig]) -> str:
+    duplicates = Counter(item.key for item in selected)
+    return qualified_library_key(library) if duplicates[library.key] > 1 else library.key
+
+
+def selected_libraries(names: list[str]) -> list[LibraryConfig]:
+    libraries, _ = load_libraries()
+    if not names:
+        return [
+            library
+            for library in libraries
+            if library.key in {"tech", "personal"} or qualified_library_key(library) in {"onedrive.tech", "onedrive.personal"}
+        ]
+    selected: list[LibraryConfig] = []
+    for name in names:
+        matches = matching_libraries(libraries, name)
+        if not matches:
+            raise SystemExit(f"Unknown library: {name}\nAvailable libraries: {available_library_keys(libraries)}")
+        if len(matches) > 1:
+            raise SystemExit(
+                f"Ambiguous library: {name}\nUse one of: "
+                + ", ".join(qualified_library_key(library) for library in matches)
+            )
+        selected.append(matches[0])
+    return selected
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Propose a small review taxonomy for Calibre-backed lazybooks libraries.")
+    parser.add_argument("libraries", nargs="*", help="Library keys to process. Defaults to tech and personal.")
+    parser.add_argument("--taxonomy-config", type=Path, default=DEFAULT_TAXONOMY_CONFIG, help="Path to taxonomy TOML. Defaults to LAZYBOOKS_TAXONOMY_CONFIG or ~/.config/lazybooks/taxonomy.toml.")
+    parser.add_argument("--output-dir", type=Path, default=Path("reports"), help="Directory for Markdown and CSV reports.")
+    parser.add_argument("--explain", metavar="LIBRARY", help="Explain taxonomy profile, rules, and current proposal summary for one library.")
+    parser.add_argument("--apply", action="store_true", help="Apply proposed taxonomy tags to Calibre metadata.db files after writing reports.")
+    args = parser.parse_args()
+
+    if args.apply and not args.libraries:
+        parser.error("--apply requires explicit library names, e.g. booktaxonomy onedrive.tech --apply")
+
+    taxonomy = load_taxonomy_config(args.taxonomy_config)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    if args.explain:
+        selected = selected_libraries([args.explain])
+        explain_library(selected[0], taxonomy, args.output_dir)
+        return 0
+
+    proposals_by_library: dict[str, list[Proposal]] = {}
+    profiles_by_library: dict[str, TaxonomyProfile] = {}
+    selected = selected_libraries(args.libraries)
+    for library in selected:
+        profile = profile_for_library(library, taxonomy)
+        books = load_db_books(library)
+        tag_counts = recurring_tag_counts(books, profile)
+        proposals = [classify(book, tag_counts, profile) for book in books]
+        proposals.sort(key=lambda item: (item.category.casefold(), item.book.title.casefold()))
+        key = report_key(library, selected)
+        proposals_by_library[key] = proposals
+        profiles_by_library[key] = profile
+        write_csv(args.output_dir / f"{key}-taxonomy-proposal.csv", proposals, tag_counts, profile)
+
+    write_summary(args.output_dir / "taxonomy-proposal.md", proposals_by_library, profiles_by_library)
+    if args.apply:
+        all_proposals = [proposal for proposals in proposals_by_library.values() for proposal in proposals]
+        for db_path, count, backup in apply_proposals(all_proposals):
+            print(f"applied {count} tags in {db_path}")
+            print(f"backup -> {backup}")
+    for library, proposals in proposals_by_library.items():
+        print(f"{library}: {len(proposals)} books -> {args.output_dir / f'{library}-taxonomy-proposal.csv'}")
+    print(f"summary -> {args.output_dir / 'taxonomy-proposal.md'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

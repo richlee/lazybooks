@@ -10,3 +10,5 @@ book-indexes/
 reports/
 .venv/
 *.egg-info/
+build/
+dist/

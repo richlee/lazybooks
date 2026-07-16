@@ -1,21 +1,13 @@
 from __future__ import annotations
 
-import importlib.util
-import sys
 from collections import Counter
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
+
+from lazybooks.cli import taxonomy as booktaxonomy_module
 
 
 def load_booktaxonomy_module():
-    loader = SourceFileLoader("booktaxonomy_script", str(Path("bin/booktaxonomy")))
-    spec = importlib.util.spec_from_loader("booktaxonomy_script", loader)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return booktaxonomy_module
 
 
 def metadata_book(module, *, title: str, library: str = "tech", tags: str = ""):

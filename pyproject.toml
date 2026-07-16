@@ -8,7 +8,8 @@ dynamic = ["version"]
 description = "Terminal UI for cloud-hosted Calibre and PDF libraries"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   { name = "Rich Lee", email = "richalee@pm.me" }
 ]
@@ -17,7 +18,6 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
   "Intended Audience :: End Users/Desktop",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -34,22 +34,21 @@ Repository = "https://github.com/richlee/lazybooks"
 Issues = "https://github.com/richlee/lazybooks/issues"
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "build>=1.5", "twine>=6.2"]
 
 [project.scripts]
 lazybooks = "lazybooks.tui.textual_app:main"
 lazybooks-doctor = "lazybooks.cli.doctor:main"
+lazybooks-curses = "lazybooks.tui.curses_app:run"
 bookfind = "lazybooks.cli.find:main"
+bookindex = "lazybooks.cli.index:main"
+bookpick = "lazybooks.cli.pick:main"
 bookrefresh = "lazybooks.cli.refresh:main"
+booktaxonomy = "lazybooks.cli.taxonomy:main"
 
-[tool.setuptools]
-packages = ["lazybooks", "lazybooks.cli", "lazybooks.tui", "lazybooks.demo"]
-script-files = [
-  "bin/bookindex",
-  "bin/bookpick",
-  "bin/booktaxonomy",
-  "bin/lazybooks-curses",
-]
+[tool.setuptools.packages.find]
+include = ["lazybooks*"]
+namespaces = false
 
 [tool.setuptools.package-data]
 "lazybooks" = [

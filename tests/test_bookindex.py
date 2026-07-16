@@ -3,23 +3,15 @@ from __future__ import annotations
 import json
 import os
 import sys
-import importlib.util
-from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from subprocess import run
 
+from lazybooks.cli import index as bookindex_module
 from lazybooks.config import LibraryConfig
 
 
 def load_bookindex_module():
-    loader = SourceFileLoader("bookindex_script", str(Path("bin/bookindex")))
-    spec = importlib.util.spec_from_loader("bookindex_script", loader)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return bookindex_module
 
 
 def test_bookindex_writes_remote_path_for_matching_prefix(tmp_path: Path) -> None:
@@ -33,7 +25,8 @@ def test_bookindex_writes_remote_path_for_matching_prefix(tmp_path: Path) -> Non
     result = run(
         [
             sys.executable,
-            "bin/bookindex",
+            "-m",
+            "lazybooks.cli.index",
             "--root",
             str(library),
             "--index-dir",
@@ -91,7 +84,7 @@ category_depth = 1
     )
 
     result = run(
-        [sys.executable, "bin/bookindex", "--config", str(config), "--all"],
+        [sys.executable, "-m", "lazybooks.cli.index", "--config", str(config), "--all"],
         check=True,
         capture_output=True,
         text=True,
@@ -140,7 +133,7 @@ index_remote = "two:index/reference"
     )
 
     result = run(
-        [sys.executable, "bin/bookindex", "--config", str(config), "--library", "reference"],
+        [sys.executable, "-m", "lazybooks.cli.index", "--config", str(config), "--library", "reference"],
         check=False,
         capture_output=True,
         text=True,
@@ -174,7 +167,7 @@ index_remote = "google-drive:index/reference"
     )
 
     result = run(
-        [sys.executable, "bin/bookindex", "--config", str(config), "--library", "google.reference"],
+        [sys.executable, "-m", "lazybooks.cli.index", "--config", str(config), "--library", "google.reference"],
         check=True,
         capture_output=True,
         text=True,
