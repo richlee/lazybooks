@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from lazybooks.config import (
@@ -20,12 +21,21 @@ def test_default_paths_use_xdg_locations(monkeypatch) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", "/tmp/lazybooks-config")
     monkeypatch.setenv("XDG_DATA_HOME", "/tmp/lazybooks-data")
     monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/lazybooks-cache")
+    monkeypatch.setenv("APPDATA", "/tmp/lazybooks-appdata")
+    monkeypatch.setenv("LOCALAPPDATA", "/tmp/lazybooks-localappdata")
 
-    assert config_home() == Path("/tmp/lazybooks-config/lazybooks")
-    assert data_home() == Path("/tmp/lazybooks-data/lazybooks")
-    assert cache_home() == Path("/tmp/lazybooks-cache/lazybooks")
-    assert default_index_dir("tech") == Path("/tmp/lazybooks-data/lazybooks/indexes/tech")
-    assert default_book_cache() == Path("/tmp/lazybooks-cache/lazybooks/books")
+    if os.name == "nt":
+        assert config_home() == Path("/tmp/lazybooks-appdata/lazybooks")
+        assert data_home() == Path("/tmp/lazybooks-localappdata/lazybooks")
+        assert cache_home() == Path("/tmp/lazybooks-localappdata/lazybooks/cache")
+        assert default_index_dir("tech") == Path("/tmp/lazybooks-localappdata/lazybooks/indexes/tech")
+        assert default_book_cache() == Path("/tmp/lazybooks-localappdata/lazybooks/cache/books")
+    else:
+        assert config_home() == Path("/tmp/lazybooks-config/lazybooks")
+        assert data_home() == Path("/tmp/lazybooks-data/lazybooks")
+        assert cache_home() == Path("/tmp/lazybooks-cache/lazybooks")
+        assert default_index_dir("tech") == Path("/tmp/lazybooks-data/lazybooks/indexes/tech")
+        assert default_book_cache() == Path("/tmp/lazybooks-cache/lazybooks/books")
 
 
 def test_load_libraries_from_config(tmp_path: Path) -> None:
@@ -102,6 +112,7 @@ index_remote = "google-drive:Library/book-indexes/personal"
 
 def test_grouped_config_default_index_dirs_are_source_scoped(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "localappdata"))
     config = tmp_path / "config.toml"
     config.write_text(
         """
@@ -121,8 +132,9 @@ name = "Assurance"
 
     sources, _default_source_index, _default_library_index = load_sources(config)
 
-    assert sources[0].libraries[0].index_dir == tmp_path / "data/lazybooks/indexes/onedrive/assurance"
-    assert sources[1].libraries[0].index_dir == tmp_path / "data/lazybooks/indexes/google/assurance"
+    expected_root = tmp_path / "localappdata/lazybooks/indexes" if os.name == "nt" else tmp_path / "data/lazybooks/indexes"
+    assert sources[0].libraries[0].index_dir == expected_root / "onedrive/assurance"
+    assert sources[1].libraries[0].index_dir == expected_root / "google/assurance"
 
 
 def test_rewrite_remote() -> None:
