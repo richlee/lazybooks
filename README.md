@@ -29,6 +29,10 @@ The normal workflow is:
 For provider-specific setup, see `docs/providers.md`. For category and
 taxonomy guidance, see `docs/taxonomy.md`.
 
+## Screenshot
+
+![lazybooks TUI showing configured cloud sources, libraries, categories, books, cache state, and command shortcuts](docs/assets/lazybooks-main.jpg)
+
 ## Quick Start: Demo
 
 You can try the TUI without OneDrive, Calibre, or private book data after
