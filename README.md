@@ -31,7 +31,7 @@ taxonomy guidance, see `docs/taxonomy.md`.
 
 ## Screenshot
 
-![lazybooks TUI showing configured cloud sources, libraries, categories, books, cache state, and command shortcuts](docs/assets/lazybooks-main.jpg)
+![lazybooks TUI showing configured cloud sources, libraries, categories, books, cache state, and command shortcuts](https://raw.githubusercontent.com/richlee/lazybooks/main/docs/assets/lazybooks-main.jpg)
 
 ## Quick Start: Demo
 
