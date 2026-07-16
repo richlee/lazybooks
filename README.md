@@ -791,6 +791,19 @@ git push
 git push origin v0.2.0
 ```
 
+PyPI publishing uses GitHub Actions trusted publishing. Configure PyPI with:
+
+```text
+Owner: richlee
+Repository name: lazybooks
+Workflow name: publish.yml
+Environment name: pypi
+```
+
+Then publish by creating a GitHub Release from the matching tag. The
+`.github/workflows/publish.yml` workflow builds the distributions, checks them
+with Twine, and uploads them to PyPI without a stored API token.
+
 ## Troubleshooting
 
 If `bookrefresh` says the rclone remote is missing, check:
