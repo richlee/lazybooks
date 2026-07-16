@@ -5,12 +5,18 @@ from pathlib import Path
 
 import lazybooks.tui.textual_app as textual_app
 from lazybooks.config import LibraryConfig, SourceConfig
-from lazybooks.tui.textual_app import LazyBooksApp, MessageModal
+from lazybooks.tui.textual_app import LazyBooksApp, MessageModal, shortcut_row
 from textual.widgets import Input, ListView, Static
 
 
 def run_async(coro):
     return asyncio.run(coro)
+
+
+def reverse_text(rendered) -> list[str]:
+    if not hasattr(rendered, "spans"):
+        return []
+    return [rendered.plain[span.start : span.end] for span in rendered.spans if "reverse" in str(span.style)]
 
 
 def test_search_is_not_in_tab_sequence(library) -> None:
@@ -128,6 +134,15 @@ def test_source_row_shows_shortcut_brackets(library) -> None:
             assert "[b] Google Drive" in text
 
     run_async(scenario())
+
+
+def test_shortcut_row_moves_reverse_highlight() -> None:
+    row = shortcut_row("Sources", ["[a] OneDrive", "[b] Google Drive"], 0)
+    assert row.plain == "Sources: [a] OneDrive  [b] Google Drive"
+    assert reverse_text(row) == ["[a] OneDrive"]
+
+    row = shortcut_row("Sources", ["[a] OneDrive", "[b] Google Drive"], 1)
+    assert reverse_text(row) == ["[b] Google Drive"]
 
 
 def test_category_change_selects_first_visible_book(library) -> None:

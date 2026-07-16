@@ -5,7 +5,7 @@ import sys
 import textwrap
 from dataclasses import dataclass
 
-from rich.markup import escape
+from rich.text import Text
 from textual import events, on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -39,6 +39,15 @@ class LibraryState:
     category_index: int = 0
     book_index: int = 0
     query: str = ""
+
+
+def shortcut_row(prefix: str, labels: list[str], selected_index: int) -> Text:
+    row = Text(f"{prefix}: ")
+    for index, label in enumerate(labels):
+        if index:
+            row.append("  ")
+        row.append(label, style="reverse" if index == selected_index else "")
+    return row
 
 
 class MessageModal(ModalScreen[None]):
@@ -371,16 +380,14 @@ class LazyBooksApp(App[None]):
         labels = []
         for index, source in enumerate(self.sources[: len(SOURCE_SHORTCUTS)]):
             shortcut = SOURCE_SHORTCUTS[index]
-            label = f"\\[{shortcut}] {escape(source.name)}"
-            labels.append(f"[reverse]{label}[/]" if index == self.source_index else label)
-        self.query_one("#sources", Static).update(f"Sources: {'  '.join(labels)}")
+            labels.append(f"[{shortcut}] {source.name}")
+        self.query_one("#sources", Static).update(shortcut_row("Sources", labels, self.source_index))
 
     def update_tabs(self) -> None:
         labels = []
         for index, library in enumerate(self.libraries[:MAX_LIBRARY_SHORTCUTS], start=1):
-            label = f"\\[{index}] {escape(library.name)}"
-            labels.append(f"[reverse]{label}[/]" if index - 1 == self.library_index else label)
-        self.query_one("#tabs", Static).update(f"Libraries: {'  '.join(labels)}")
+            labels.append(f"[{index}] {library.name}")
+        self.query_one("#tabs", Static).update(shortcut_row("Libraries", labels, self.library_index))
 
     def update_search(self) -> None:
         search_input = self.search_input()
