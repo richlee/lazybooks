@@ -9,6 +9,14 @@ manifests, fetching a selected PDF from an `rclone` remote, and opening it
 locally. It is useful on machines where you can authenticate to OneDrive through
 `rclone`, but cannot or do not want to sync the whole library into Finder.
 
+It works best when:
+
+- your PDFs live in cloud storage supported by `rclone`
+- you want a small local searchable index, not a full local sync
+- you want to download only the book you are about to read
+- your library is optionally managed by Calibre, but the browsing UI does not
+  need Calibre to be running
+
 The normal workflow is:
 
 1. Keep the source libraries in OneDrive, optionally managed by Calibre.
@@ -17,7 +25,7 @@ The normal workflow is:
 4. Refresh the local manifest cache on any machine.
 5. Browse locally and fetch individual PDFs on demand.
 
-## Quick Demo
+## Quick Start: Demo
 
 You can try the TUI without OneDrive, Calibre, or private book data:
 
@@ -34,6 +42,16 @@ for screenshots, testing navigation, switching libraries, search, details, and
 cache markers. Opening uncached demo books is expected to fail because the demo
 uses a fake `demo:` rclone remote.
 
+On Windows PowerShell, use:
+
+```powershell
+git clone https://github.com/richlee/lazybooks.git
+cd lazybooks
+py -m venv .venv
+.\.venv\Scripts\python -m pip install -e .
+.\.venv\Scripts\lazybooks --config examples/demo/config.toml
+```
+
 ## Commands
 
 - `lazybooks`: full terminal UI with categories, search, cache state, PDF fetch/open, and cached-copy delete.
@@ -49,8 +67,8 @@ uses a fake `demo:` rclone remote.
 Required:
 
 - Python 3.11 or newer
-- `rclone`
-- A configured `rclone` remote for your cloud storage
+- `rclone`, for real cloud-backed libraries
+- a configured `rclone` remote for your cloud storage
 - Textual, installed through the Python package metadata
 
 Optional:
@@ -64,7 +82,15 @@ On macOS with Homebrew:
 brew install rclone fzf
 ```
 
-## Install For Use
+On Windows, install Python from python.org or the Microsoft Store, then install
+`rclone` from <https://rclone.org/downloads/> or a package manager such as
+WinGet:
+
+```powershell
+winget install Rclone.Rclone
+```
+
+## Install
 
 Clone the repo and install the package in a virtual environment:
 
@@ -75,25 +101,20 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
-The package install provides the main commands:
+Use commands through the virtual environment path, or activate it first:
+
+```sh
+source .venv/bin/activate
+```
+
+The package install provides:
 
 ```sh
 lazybooks --version
 bookrefresh --help
 bookfind --help
-```
-
-Some helper scripts are still distributed from `bin/`. For `bookindex`,
-`bookpick`, `booktaxonomy`, and `lazybooks-curses`, add `bin` to your `PATH`:
-
-```sh
-export PATH="$PWD/bin:$PATH"
-```
-
-For persistent shell setup, add the path to your shell profile:
-
-```sh
-export PATH="$HOME/dev/lazybooks/bin:$PATH"
+bookindex --help
+booktaxonomy --help
 ```
 
 For an isolated user install from a checkout:
@@ -101,6 +122,9 @@ For an isolated user install from a checkout:
 ```sh
 pipx install .
 ```
+
+When working directly from a checkout without installing the package, helper
+scripts are also available in `bin/`.
 
 ## rclone Setup
 
@@ -138,6 +162,13 @@ The examples below assume a remote named `personal-onedrive:`. If yours is named
 `onedrive:`, use that instead.
 
 ## Configuration
+
+`lazybooks` needs to know four things:
+
+- where downloaded PDFs should be cached locally
+- which `rclone` remote can fetch PDFs
+- where the small local index files should live
+- where those index files are stored in cloud storage
 
 Create `~/.config/lazybooks/config.toml`:
 
@@ -189,7 +220,33 @@ An example config is included at `examples/config.toml`.
 Environment variables such as `LAZYBOOKS_REMOTE` can override some config values,
 but a config file is easier for multi-library use.
 
-## Build Indexes
+Use a different config file for testing or demos:
+
+```sh
+lazybooks --config examples/demo/config.toml
+bookfind --config examples/demo/config.toml secure
+```
+
+## Set Up A Real Library
+
+A real library has two locations:
+
+- the source PDFs, usually somewhere in OneDrive
+- the generated index folder, usually small enough to keep local
+
+For example:
+
+```text
+OneDrive/Library/tech/tech-library-calibre/       # source PDFs and Calibre metadata
+~/book-indexes/tech/                              # generated index.html and manifest.json
+OneDrive/Library/book-indexes/tech/               # published copy of the generated index
+~/book-cache/                                     # downloaded PDFs on this machine
+```
+
+The generated index is deliberately separate from the PDF library. That keeps
+refreshes small and avoids accidentally copying a whole library to a laptop.
+
+## Build An Index
 
 `bookindex` writes two files:
 
@@ -225,7 +282,7 @@ bookindex \
 For non-Calibre folders, categories come from folder names. `--category-depth 2`
 uses the first two path components under the root.
 
-## Publish Indexes To OneDrive
+## Publish The Index
 
 After building an index, upload only the small index files:
 
@@ -248,6 +305,73 @@ bookrefresh --all
 
 `bookrefresh` copies only `index.html` and `manifest.json`. It does not copy
 PDFs.
+
+## Browse With The TUI
+
+```sh
+lazybooks
+```
+
+`lazybooks` is the Textual TUI from v0.2 onward. The original curses
+implementation is available as a legacy fallback:
+
+```sh
+lazybooks-curses
+```
+
+Keys:
+
+- Move: `Up` / `Down` or `k` / `j`
+- Pane: `Tab`
+- Search: `/`
+- Clear search: `c`
+- Open: `Enter`
+- Details: `Right` or `l`
+- Delete cache: `d`
+- Library: `1`-`9`
+- Refresh: `r`
+- About: `?`
+- Quit: `q` or `Esc`
+
+PDFs are fetched into the configured cache, usually:
+
+```text
+~/book-cache
+```
+
+Deleting a cached book only removes the local downloaded copy. It does not touch
+OneDrive, Calibre, or the manifest.
+
+## Search From The CLI
+
+List matches:
+
+```sh
+bookfind secure
+bookfind architecture metrics
+bookfind --library tech kubernetes
+```
+
+Fetch and open a result:
+
+```sh
+bookfind secure -n 1
+```
+
+Fetch without opening:
+
+```sh
+bookfind secure -n 1 --no-open
+```
+
+## Pick With fzf
+
+```sh
+bookpick
+bookpick tech
+```
+
+Type to filter, press Enter to fetch and open the selected book.
 
 ## Taxonomies
 
@@ -369,42 +493,6 @@ rclone copy "$HOME/book-indexes/tech" \
 bookrefresh tech
 ```
 
-## Browse With The TUI
-
-```sh
-lazybooks
-```
-
-`lazybooks` is the Textual TUI from v0.2 onward. The original curses
-implementation is available as a legacy fallback:
-
-```sh
-lazybooks-curses
-```
-
-Keys:
-
-- Move: `Up` / `Down` or `k` / `j`
-- Pane: `Tab`
-- Search: `/`
-- Clear search: `c`
-- Open: `Enter`
-- Details: `Right` or `l`
-- Delete cache: `d`
-- Library: `1`-`9`
-- Refresh: `r`
-- About: `?`
-- Quit: `q` or `Esc`
-
-PDFs are fetched into the configured cache, usually:
-
-```text
-~/book-cache
-```
-
-Deleting a cached book only removes the local downloaded copy. It does not touch
-OneDrive, Calibre, or the manifest.
-
 ## Development
 
 Install development dependencies:
@@ -455,37 +543,6 @@ Recommended captures:
 - search open with a filtered result set
 - Book Details modal
 - optional short GIF: switch library, change category, search, open details
-
-## Search From The CLI
-
-List matches:
-
-```sh
-bookfind secure
-bookfind architecture metrics
-bookfind --library tech kubernetes
-```
-
-Fetch and open a result:
-
-```sh
-bookfind secure -n 1
-```
-
-Fetch without opening:
-
-```sh
-bookfind secure -n 1 --no-open
-```
-
-## Pick With fzf
-
-```sh
-bookpick
-bookpick tech
-```
-
-Type to filter, press Enter to fetch and open the selected book.
 
 ## Manifest Format
 

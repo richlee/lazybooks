@@ -1,19 +1,19 @@
 default = "assurance"
 cache = "~/book-cache"
-remote = "onedrive:"
-local_prefix = "~/OneDrive/"
+remote = "personal-onedrive:"
+local_prefix = "~/Library/CloudStorage/OneDrive-Personal/"
 
 [libraries.assurance]
 name = "Assurance"
 index_dir = "~/book-indexes/assurance"
-index_remote = "onedrive:Library/book-indexes/assurance"
+index_remote = "personal-onedrive:Library/book-indexes/assurance"
 
 [libraries.tech]
 name = "Tech"
 index_dir = "~/book-indexes/tech"
-index_remote = "onedrive:Library/book-indexes/tech"
+index_remote = "personal-onedrive:Library/book-indexes/tech"
 
 [libraries.personal]
 name = "Personal"
 index_dir = "~/book-indexes/personal"
-index_remote = "onedrive:Library/book-indexes/personal"
+index_remote = "personal-onedrive:Library/book-indexes/personal"
