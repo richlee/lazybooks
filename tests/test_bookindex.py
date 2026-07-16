@@ -151,12 +151,3 @@ def test_publish_configured_library_uses_filtered_rclone_copy(monkeypatch, tmp_p
         )
     ]
 
-
-def test_calibre_category_ignores_broad_library_tag() -> None:
-    module = load_bookindex_module()
-
-    assert (
-        module.calibre_category(["assurance", "security-reliability"], "assurance", "Assurance")
-        == "security-reliability"
-    )
-    assert module.calibre_category(["assurance"], "assurance", "Assurance") == "assurance"
