@@ -81,6 +81,19 @@ def clean_author(value: str) -> str:
     return ", ".join(authors) or "Unknown"
 
 
+def calibre_category(tags: list[str], fallback: str, library_name: str) -> str:
+    ignored = {
+        fallback.casefold(),
+        slug(fallback).casefold(),
+        library_name.casefold(),
+        slug(library_name).casefold(),
+    }
+    for tag in tags:
+        if tag.casefold() not in ignored and slug(tag).casefold() not in ignored:
+            return slug(tag)
+    return fallback
+
+
 def load_calibre_books(library: Path, category: str, source: str) -> dict[Path, Book]:
     db = library / "metadata.db"
     if not db.exists():
@@ -113,7 +126,7 @@ def load_calibre_books(library: Path, category: str, source: str) -> dict[Path, 
             if not path.exists():
                 continue
             tags = [tag.strip() for tag in (row["tags"] or "").split(",") if tag.strip()]
-            book_category = slug(tags[0]) if tags else category
+            book_category = calibre_category(tags, category, source.replace(" Calibre", ""))
             books[path.resolve()] = Book(
                 title=row["title"] or path.stem,
                 author=clean_author(row["authors"] or "Unknown"),

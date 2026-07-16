@@ -21,14 +21,13 @@ from lazybooks.version import version_info, version_label
 
 
 HELP_TEXT = (
-    "Pane:Tab | Search:/ | Clear Search:c | Open:Enter | Info:→ | "
-    "Del:d | Source:shown key | Lib:1-9 | About:? | Quit:q"
+    "Pane:Tab | Search:/ | Open:Enter | Info:→ | Del:d | About:? | Quit:q"
 )
 ALL_CATEGORY = "All"
 MESSAGE_TIMEOUT_SECONDS = 3.0
 MODAL_WRAP_WIDTH = 72
 MAX_LIBRARY_SHORTCUTS = 9
-SOURCE_SHORTCUTS = tuple(ch for ch in "abcdefghijklmnopqrstuvwxyz" if ch not in {"c", "d", "l", "q", "r"})
+SOURCE_SHORTCUTS = tuple("abcdefghijklmnopqrstuvwxyz")
 UNKNOWN_AUTHOR = "Unknown"
 
 
@@ -232,7 +231,6 @@ class LazyBooksApp(App[None]):
         Binding("q,escape", "quit", "Quit", show=False),
         Binding("tab", "toggle_focus", "Pane", show=False),
         Binding("/", "search", "Search", show=False),
-        Binding("c", "clear_search", "Clear search", show=False),
         Binding("right,l", "details", "Details", show=False),
         Binding("d", "delete_cache", "Delete cache", show=False),
         Binding("r", "refresh", "Refresh", show=False),

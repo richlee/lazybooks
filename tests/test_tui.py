@@ -121,6 +121,7 @@ def test_source_row_shows_shortcut_brackets(library) -> None:
             [
                 SourceConfig("onedrive", "OneDrive", [library]),
                 SourceConfig("google", "Google Drive", [library]),
+                SourceConfig("dropbox", "Dropbox", [library]),
             ],
             0,
             0,
@@ -132,6 +133,7 @@ def test_source_row_shows_shortcut_brackets(library) -> None:
             text = rendered.plain if hasattr(rendered, "plain") else str(rendered)
             assert "[a] OneDrive" in text
             assert "[b] Google Drive" in text
+            assert "[c] Dropbox" in text
 
     run_async(scenario())
 
