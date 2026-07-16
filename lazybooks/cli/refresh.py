@@ -10,7 +10,7 @@ from lazybooks.refresh import RefreshError, refresh_library, report_refresh_erro
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Refresh lazybooks index files from rclone remotes.")
-    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or the platform lazybooks config path.")
     parser.add_argument("library", nargs="?", help="Library key to refresh. Defaults to configured default.")
     parser.add_argument("--all", action="store_true", help="Refresh all configured libraries.")
     args = parser.parse_args()

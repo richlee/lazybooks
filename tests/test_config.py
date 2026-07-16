@@ -2,7 +2,30 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lazybooks.config import demo_root, load_libraries, load_sources, rewrite_remote, select_library
+from lazybooks.config import (
+    cache_home,
+    config_home,
+    data_home,
+    default_book_cache,
+    default_index_dir,
+    demo_root,
+    load_libraries,
+    load_sources,
+    rewrite_remote,
+    select_library,
+)
+
+
+def test_default_paths_use_xdg_locations(monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/tmp/lazybooks-config")
+    monkeypatch.setenv("XDG_DATA_HOME", "/tmp/lazybooks-data")
+    monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/lazybooks-cache")
+
+    assert config_home() == Path("/tmp/lazybooks-config/lazybooks")
+    assert data_home() == Path("/tmp/lazybooks-data/lazybooks")
+    assert cache_home() == Path("/tmp/lazybooks-cache/lazybooks")
+    assert default_index_dir("tech") == Path("/tmp/lazybooks-data/lazybooks/indexes/tech")
+    assert default_book_cache() == Path("/tmp/lazybooks-cache/lazybooks/books")
 
 
 def test_load_libraries_from_config(tmp_path: Path) -> None:
@@ -75,6 +98,31 @@ index_remote = "google-drive:Library/book-indexes/personal"
     assert sources[1].libraries[0].remote == "google-drive:"
     assert [library.key for library in libraries] == ["assurance", "personal"]
     assert libraries[default_index].source_key == "google"
+
+
+def test_grouped_config_default_index_dirs_are_source_scoped(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    config = tmp_path / "config.toml"
+    config.write_text(
+        """
+[sources.onedrive]
+remote = "personal-onedrive:"
+
+[sources.onedrive.libraries.assurance]
+name = "Assurance"
+
+[sources.google]
+remote = "google-drive:"
+
+[sources.google.libraries.assurance]
+name = "Assurance"
+"""
+    )
+
+    sources, _default_source_index, _default_library_index = load_sources(config)
+
+    assert sources[0].libraries[0].index_dir == tmp_path / "data/lazybooks/indexes/onedrive/assurance"
+    assert sources[1].libraries[0].index_dir == tmp_path / "data/lazybooks/indexes/google/assurance"
 
 
 def test_rewrite_remote() -> None:

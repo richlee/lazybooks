@@ -11,7 +11,7 @@ from lazybooks.files import cached_path, fetch_book, open_file, remote_path
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Search the lazybooks manifest and fetch PDFs with rclone.")
-    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or the platform lazybooks config path.")
     parser.add_argument("-l", "--library", help="Library key to search. Defaults to configured default.")
     parser.add_argument("terms", nargs="+", help="Search terms, all must match.")
     parser.add_argument("-n", "--number", type=int, help="Fetch/open result number.")

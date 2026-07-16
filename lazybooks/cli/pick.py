@@ -46,7 +46,7 @@ def row(index: int, book) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Pick a lazybooks PDF with fzf, then fetch and open it.")
     parser.add_argument("library", nargs="?", help="Library key, e.g. tech or onedrive.tech. Defaults to configured default.")
-    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or the platform lazybooks config path.")
     parser.add_argument("--no-open", action="store_true", help="Fetch the selected PDF without opening it.")
     args = parser.parse_args()
 

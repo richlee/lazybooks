@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from .config import LibraryConfig
+from .config import DEFAULT_CONFIG, LibraryConfig
 
 
 class RefreshError(RuntimeError):
@@ -51,12 +51,11 @@ def report_refresh_error(exc: RefreshError) -> None:
     print(f"Tried remote index: {exc.library.index_remote}", file=sys.stderr)
     if "directory not found" in exc.stderr.casefold():
         print("The rclone remote exists, but that index folder is missing.", file=sys.stderr)
-        print("Create/generate that library index, or remove it from ~/.config/lazybooks/config.toml for now.", file=sys.stderr)
+        print(f"Create/generate that library index, or remove it from {DEFAULT_CONFIG} for now.", file=sys.stderr)
         return
     remotes = rclone_remotes()
     if remotes:
         print("Available rclone remotes:", file=sys.stderr)
         for remote in remotes.splitlines():
             print(f"  {remote}", file=sys.stderr)
-    print("Check the rclone remote name in ~/.config/lazybooks/config.toml or LAZYBOOKS_REMOTE.", file=sys.stderr)
-
+    print(f"Check the rclone remote name in {DEFAULT_CONFIG} or LAZYBOOKS_REMOTE.", file=sys.stderr)

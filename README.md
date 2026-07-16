@@ -236,10 +236,14 @@ Create `~/.config/lazybooks/config.toml`. A source is normally one `rclone`
 remote, such as OneDrive, Google Drive, or Dropbox. Each source can expose one
 or more libraries:
 
+On Windows the default config path is `%APPDATA%\lazybooks\config.toml`.
+Generated indexes default to `%LOCALAPPDATA%\lazybooks\indexes`, and downloaded
+books default to `%LOCALAPPDATA%\lazybooks\cache\books`.
+
 ```toml
 default_source = "onedrive"
 default_library = "assurance"
-cache = "~/book-cache"
+cache = "~/.cache/lazybooks/books"
 
 [sources.onedrive]
 name = "OneDrive"
@@ -252,7 +256,7 @@ root = "~/Library/CloudStorage/OneDrive-Personal/Library/assurance/assurance-lib
 title = "Assurance Books"
 library_name = "Assurance"
 calibre_metadata_only = true
-index_dir = "~/book-indexes/onedrive/assurance"
+index_dir = "~/.local/share/lazybooks/indexes/onedrive/assurance"
 index_remote = "personal-onedrive:Library/book-indexes/assurance"
 
 [sources.onedrive.libraries.tech]
@@ -261,7 +265,7 @@ root = "~/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calib
 title = "Tech Books"
 library_name = "Tech"
 calibre_metadata_only = true
-index_dir = "~/book-indexes/onedrive/tech"
+index_dir = "~/.local/share/lazybooks/indexes/onedrive/tech"
 index_remote = "personal-onedrive:Library/book-indexes/tech"
 
 [sources.onedrive.libraries.personal]
@@ -270,7 +274,7 @@ root = "~/Library/CloudStorage/OneDrive-Personal/Library/personal/personal-libra
 title = "Personal Books"
 library_name = "Personal"
 calibre_metadata_only = true
-index_dir = "~/book-indexes/onedrive/personal"
+index_dir = "~/.local/share/lazybooks/indexes/onedrive/personal"
 index_remote = "personal-onedrive:Library/book-indexes/personal"
 
 [sources.google]
@@ -283,7 +287,7 @@ name = "Assurance"
 root = "~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/Library/assurance"
 title = "Google Assurance Books"
 library_name = "Assurance"
-index_dir = "~/book-indexes/google/assurance"
+index_dir = "~/.local/share/lazybooks/indexes/google/assurance"
 index_remote = "google-drive:Library/book-indexes/assurance"
 
 [sources.dropbox]
@@ -296,7 +300,7 @@ name = "Assurance"
 root = "~/Library/CloudStorage/Dropbox/Library/assurance"
 title = "Dropbox Assurance Books"
 library_name = "Assurance"
-index_dir = "~/book-indexes/dropbox/assurance"
+index_dir = "~/.local/share/lazybooks/indexes/dropbox/assurance"
 index_remote = "dropbox:Library/book-indexes/assurance"
 ```
 
@@ -343,8 +347,9 @@ Bare names such as `assurance` still work when they are unique. When a bare name
 is ambiguous, the tools print the available `source.library` names.
 
 The cache root is shared by default, but cached PDFs are stored beneath
-source/library subdirectories such as `~/book-cache/onedrive/assurance/`. That
-keeps duplicate titles from different providers or libraries separate.
+source/library subdirectories such as
+`~/.cache/lazybooks/books/onedrive/assurance/`. That keeps duplicate titles from
+different providers or libraries separate.
 
 An example config is included at `examples/config.toml`.
 
@@ -373,9 +378,9 @@ For example:
 
 ```text
 OneDrive/Library/tech/tech-library-calibre/       # source PDFs and Calibre metadata
-~/book-indexes/tech/                              # generated index.html and manifest.json
+~/.local/share/lazybooks/indexes/tech/            # generated index.html and manifest.json
 OneDrive/Library/book-indexes/tech/               # published copy of the generated index
-~/book-cache/                                     # downloaded PDFs on this machine
+~/.cache/lazybooks/books/                         # downloaded PDFs on this machine
 ```
 
 The generated index is deliberately separate from the PDF library. That keeps
@@ -393,7 +398,7 @@ For a Calibre-backed library:
 ```sh
 bookindex \
   --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre" \
-  --index-dir "$HOME/book-indexes/tech" \
+  --index-dir "$HOME/.local/share/lazybooks/indexes/tech" \
   --title "Tech Books" \
   --library-name Tech \
   --calibre-metadata-only \
@@ -410,7 +415,7 @@ For a folder of PDFs without Calibre metadata:
 ```sh
 bookindex \
   --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/reference-pdfs" \
-  --index-dir "$HOME/book-indexes/reference" \
+  --index-dir "$HOME/.local/share/lazybooks/indexes/reference" \
   --title "Reference Books" \
   --library-name Reference \
   --category-depth 2 \
@@ -463,7 +468,7 @@ the same local folder prefix on every machine.
 After building an index, upload only the small index files:
 
 ```sh
-rclone copy "$HOME/book-indexes/tech" \
+rclone copy "$HOME/.local/share/lazybooks/indexes/tech" \
   personal-onedrive:Library/book-indexes/tech \
   --filter '+ index.html' \
   --filter '+ manifest.json' \
@@ -515,7 +520,7 @@ Keys:
 PDFs are fetched into the configured cache, usually:
 
 ```text
-~/book-cache
+~/.cache/lazybooks/books
 ```
 
 Each configured library gets its own subdirectory under that cache root.
@@ -817,7 +822,7 @@ If fetch/open fails, confirm `local_prefix` matches the path prefix stored in
 the manifest:
 
 ```sh
-python3 -m json.tool "$HOME/book-indexes/tech/manifest.json" | head
+python3 -m json.tool "$HOME/.local/share/lazybooks/indexes/tech/manifest.json" | head
 ```
 
 If categories look wrong:

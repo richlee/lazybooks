@@ -147,7 +147,7 @@ Example:
 ```sh
 bookindex \
   --root "$HOME/Library/CloudStorage/GoogleDrive-user@example.com/My Drive/Library/assurance" \
-  --index-dir "$HOME/book-indexes/assurance-google" \
+  --index-dir "$HOME/.local/share/lazybooks/indexes/assurance-google" \
   --title "Assurance Books" \
   --library-name Assurance \
   --category-depth 2 \

@@ -7,7 +7,33 @@ from importlib import resources
 from pathlib import Path
 
 
-DEFAULT_CONFIG = Path(os.environ.get("LAZYBOOKS_CONFIG", "~/.config/lazybooks/config.toml")).expanduser()
+def config_home() -> Path:
+    if os.name == "nt":
+        return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "lazybooks"
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "lazybooks"
+
+
+def data_home() -> Path:
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "lazybooks"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "lazybooks"
+
+
+def cache_home() -> Path:
+    if os.name == "nt":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "lazybooks" / "cache"
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "lazybooks"
+
+
+def default_index_dir(key: str) -> Path:
+    return data_home() / "indexes" / key
+
+
+def default_book_cache() -> Path:
+    return cache_home() / "books"
+
+
+DEFAULT_CONFIG = Path(os.environ.get("LAZYBOOKS_CONFIG", str(config_home() / "config.toml"))).expanduser()
 
 
 @dataclass(frozen=True)
@@ -50,7 +76,7 @@ def local_prefix(value: str) -> str:
 
 
 def fallback_source() -> SourceConfig:
-    index_dir = expand_path(os.environ.get("LAZYBOOKS_INDEX_DIR", "~/book-indexes/assurance"))
+    index_dir = expand_path(os.environ.get("LAZYBOOKS_INDEX_DIR", str(default_index_dir("assurance"))))
     manifest = expand_path(os.environ.get("LAZYBOOKS_MANIFEST", str(index_dir / "manifest.json")))
     remote = os.environ.get("LAZYBOOKS_REMOTE", "onedrive:")
     index_remote = os.environ.get("LAZYBOOKS_INDEX_REMOTE", f"{remote}Library/book-indexes/assurance")
@@ -65,7 +91,7 @@ def fallback_source() -> SourceConfig:
                 manifest=manifest,
                 index_dir=index_dir,
                 index_remote=index_remote,
-                cache=expand_path(os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")),
+                cache=expand_path(os.environ.get("LAZYBOOKS_CACHE", str(default_book_cache()))),
                 remote=remote,
                 local_prefix=local_prefix(os.environ.get("LAZYBOOKS_LOCAL_PREFIX", "~/OneDrive/")),
                 source_key="default",
@@ -96,7 +122,8 @@ def parse_library(
     effective_remote: str,
     default_prefix: str,
 ) -> LibraryConfig:
-    index_dir = expand_path(str(values.get("index_dir", f"~/book-indexes/{key}")))
+    default_index_key = str(key) if source_key == "default" else f"{source_key}/{key}"
+    index_dir = expand_path(str(values.get("index_dir", str(default_index_dir(default_index_key)))))
     manifest = expand_path(str(values.get("manifest", str(index_dir / "manifest.json"))))
     name = str(values.get("name", str(key).replace("-", " ").title()))
     library_remote = os.environ.get("LAZYBOOKS_REMOTE", str(values.get("remote", effective_remote)))
@@ -124,7 +151,7 @@ def parse_library(
 
 def load_flat_source(data: dict) -> tuple[list[SourceConfig], int, int]:
     default_key = str(data.get("default", ""))
-    global_cache = str(data.get("cache", os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")))
+    global_cache = str(data.get("cache", os.environ.get("LAZYBOOKS_CACHE", str(default_book_cache()))))
     configured_remote = str(data.get("remote", "onedrive:"))
     global_remote = os.environ.get("LAZYBOOKS_REMOTE", configured_remote)
     global_prefix = str(data.get("local_prefix", os.environ.get("LAZYBOOKS_LOCAL_PREFIX", "~/OneDrive/")))
@@ -166,7 +193,7 @@ def load_grouped_sources(data: dict) -> tuple[list[SourceConfig], int, int]:
 
     default_source_key = str(data.get("default_source", ""))
     default_library_key = str(data.get("default_library", data.get("default", "")))
-    global_cache = str(data.get("cache", os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")))
+    global_cache = str(data.get("cache", os.environ.get("LAZYBOOKS_CACHE", str(default_book_cache()))))
     global_configured_remote = str(data.get("remote", "onedrive:"))
     global_remote = os.environ.get("LAZYBOOKS_REMOTE", global_configured_remote)
     global_prefix = str(data.get("local_prefix", os.environ.get("LAZYBOOKS_LOCAL_PREFIX", "~/OneDrive/")))

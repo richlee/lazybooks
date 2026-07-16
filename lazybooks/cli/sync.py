@@ -19,7 +19,7 @@ def run_step(command: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build, publish, and refresh configured lazybooks indexes.")
-    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or the platform lazybooks config path.")
     parser.add_argument("--skip-refresh", action="store_true", help="Only build and publish indexes.")
     parser.add_argument("--skip-index", action="store_true", help="Only refresh already-published indexes.")
     args = parser.parse_args(argv)

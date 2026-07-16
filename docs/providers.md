@@ -47,13 +47,13 @@ Example config:
 
 ```toml
 default = "tech"
-cache = "~/book-cache"
+cache = "~/.cache/lazybooks/books"
 remote = "personal-onedrive:"
 local_prefix = "~/Library/CloudStorage/OneDrive-Personal/"
 
 [libraries.tech]
 name = "Tech"
-index_dir = "~/book-indexes/tech"
+index_dir = "~/.local/share/lazybooks/indexes/tech"
 index_remote = "personal-onedrive:Library/book-indexes/tech"
 ```
 
@@ -62,7 +62,7 @@ Build an index with explicit `remote_path` values:
 ```sh
 bookindex \
   --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre" \
-  --index-dir "$HOME/book-indexes/tech" \
+  --index-dir "$HOME/.local/share/lazybooks/indexes/tech" \
   --title "Tech Books" \
   --library-name Tech \
   --calibre-metadata-only \
@@ -107,13 +107,13 @@ Example config:
 
 ```toml
 default = "assurance-google"
-cache = "~/book-cache"
+cache = "~/.cache/lazybooks/books"
 remote = "google-drive:"
 local_prefix = "~/Library/CloudStorage/GoogleDrive-user@example.com/My Drive/"
 
 [libraries.assurance-google]
 name = "Assurance Google"
-index_dir = "~/book-indexes/assurance-google"
+index_dir = "~/.local/share/lazybooks/indexes/assurance-google"
 index_remote = "google-drive:Library/book-indexes/assurance"
 ```
 
@@ -122,7 +122,7 @@ Build an index with explicit `remote_path` values:
 ```sh
 bookindex \
   --root "$HOME/Library/CloudStorage/GoogleDrive-user@example.com/My Drive/Library/assurance" \
-  --index-dir "$HOME/book-indexes/assurance-google" \
+  --index-dir "$HOME/.local/share/lazybooks/indexes/assurance-google" \
   --title "Assurance Books" \
   --library-name Assurance \
   --category-depth 2 \

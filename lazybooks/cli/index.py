@@ -309,7 +309,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build a lazybooks index from a folder of PDFs.")
     parser.add_argument("--all", action="store_true", help="Build indexes for every configured library with a root.")
     parser.add_argument("--publish", action="store_true", help="Upload generated index.html and manifest.json to configured index_remote.")
-    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or the platform lazybooks config path.")
     parser.add_argument("--library", help="Configured library key to build, e.g. tech or onedrive.tech.")
     parser.add_argument("--root", type=Path, help="PDF library root.")
     parser.add_argument("--index-dir", type=Path, help="Output directory.")

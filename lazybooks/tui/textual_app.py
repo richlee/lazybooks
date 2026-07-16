@@ -718,7 +718,7 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="Browse lazybooks libraries.")
     parser.add_argument("--version", "-V", action="store_true", help="Show version and exit.")
-    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or the platform lazybooks config path.")
     parser.add_argument("--demo", action="store_true", help="Run with packaged demo data.")
     args = parser.parse_args()
     if args.version:

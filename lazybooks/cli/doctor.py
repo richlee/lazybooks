@@ -71,7 +71,7 @@ def check_library(library: LibraryConfig) -> list[tuple[bool, str, str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check lazybooks product dependencies and configuration.")
-    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or the platform lazybooks config path.")
     parser.add_argument("--demo", action="store_true", help="Check the packaged demo library.")
     parser.add_argument("--check-remotes", action="store_true", help="Run rclone lsf against configured index remotes.")
     args = parser.parse_args()
