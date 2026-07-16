@@ -5,6 +5,8 @@ book-cache/
 book-indexes/
 !examples/demo/book-indexes/
 !examples/demo/book-indexes/**
+!lazybooks/demo/book-indexes/
+!lazybooks/demo/book-indexes/**
 reports/
 .venv/
 *.egg-info/

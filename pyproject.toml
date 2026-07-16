@@ -34,21 +34,28 @@ Repository = "https://github.com/richlee/lazybooks"
 Issues = "https://github.com/richlee/lazybooks/issues"
 
 [project.optional-dependencies]
-pick = ["fzf.py>=1.0"]
 dev = ["pytest>=8"]
 
 [project.scripts]
 lazybooks = "lazybooks.tui.textual_app:main"
+lazybooks-doctor = "lazybooks.cli.doctor:main"
 bookfind = "lazybooks.cli.find:main"
 bookrefresh = "lazybooks.cli.refresh:main"
 
 [tool.setuptools]
-packages = ["lazybooks", "lazybooks.cli", "lazybooks.tui"]
+packages = ["lazybooks", "lazybooks.cli", "lazybooks.tui", "lazybooks.demo"]
 script-files = [
   "bin/bookindex",
   "bin/bookpick",
   "bin/booktaxonomy",
   "bin/lazybooks-curses",
+]
+
+[tool.setuptools.package-data]
+"lazybooks.demo" = [
+  "config.toml",
+  "book-indexes/*/manifest.json",
+  "cache/*.pdf",
 ]
 
 [tool.setuptools.dynamic]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import textwrap
 from dataclasses import dataclass
 
@@ -12,7 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Static
 
 from lazybooks.books import Book, build_categories, label_category, load_books, visible_books
-from lazybooks.config import LibraryConfig, load_libraries
+from lazybooks.config import LibraryConfig, demo_root, load_libraries
 from lazybooks.files import cached_path, fetch_book, open_file
 from lazybooks.refresh import refresh_library
 from lazybooks.version import version_info, version_label
@@ -627,15 +628,23 @@ class LazyBooksApp(App[None]):
 
 
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
+        from lazybooks.cli.doctor import main as doctor_main
+
+        sys.argv = [sys.argv[0] + " doctor", *sys.argv[2:]]
+        return doctor_main()
+
     parser = argparse.ArgumentParser(description="Browse lazybooks libraries.")
     parser.add_argument("--version", "-V", action="store_true", help="Show version and exit.")
     parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--demo", action="store_true", help="Run with packaged demo data.")
     args = parser.parse_args()
     if args.version:
         print(version_label())
         return 0
 
-    libraries, default_index = load_libraries(args.config)
+    config_path = demo_root() / "config.toml" if args.demo else args.config
+    libraries, default_index = load_libraries(config_path)
     LazyBooksApp(libraries, default_index).run()
     return 0
 

@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-07-16T08:00:00+00:00",
+  "books": [
+    {
+      "title": "Deep Work",
+      "author": "Cal Newport",
+      "category": "productivity-focus",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/personal/Deep Work.pdf",
+      "remote_path": "demo:personal/Deep Work.pdf"
+    },
+    {
+      "title": "Mindfulness in Plain English",
+      "author": "Bhante Henepola Gunaratana",
+      "category": "buddhism-meditation",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/personal/Mindfulness in Plain English.pdf",
+      "remote_path": "demo:personal/Mindfulness in Plain English.pdf"
+    },
+    {
+      "title": "The Checklist Manifesto",
+      "author": "Atul Gawande",
+      "category": "health-systems-thinking",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/personal/The Checklist Manifesto.pdf",
+      "remote_path": "demo:personal/The Checklist Manifesto.pdf"
+    }
+  ]
+}

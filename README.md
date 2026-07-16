@@ -27,7 +27,14 @@ The normal workflow is:
 
 ## Quick Start: Demo
 
-You can try the TUI without OneDrive, Calibre, or private book data:
+You can try the TUI without OneDrive, Calibre, or private book data after
+installing:
+
+```sh
+lazybooks --demo
+```
+
+From a source checkout you can also run the explicit demo config:
 
 ```sh
 git clone https://github.com/richlee/lazybooks.git
@@ -55,6 +62,10 @@ py -m venv .venv
 ## Commands
 
 - `lazybooks`: full terminal UI with categories, search, cache state, PDF fetch/open, and cached-copy delete.
+- `lazybooks --demo`: run the packaged demo library.
+- `lazybooks doctor`: check dependencies, config, manifests, cache paths, and rclone basics.
+- `lazybooks doctor --demo`: check the packaged demo library.
+- `lazybooks-doctor`: the same health check as a standalone command.
 - `lazybooks-curses`: legacy fallback for the original curses TUI.
 - `bookrefresh`: copies `index.html` and `manifest.json` from OneDrive into a local cache.
 - `bookfind`: searches a manifest from the command line and fetches one selected PDF.
@@ -90,7 +101,57 @@ WinGet:
 winget install Rclone.Rclone
 ```
 
-## Install
+## Install As A Product
+
+The recommended user install is `pipx`, because it gives `lazybooks` its own
+Python environment while exposing the commands on your `PATH`:
+
+```sh
+pipx install lazybooks
+lazybooks --version
+lazybooks --demo
+lazybooks doctor --demo
+```
+
+Until `lazybooks` is published to PyPI, install from GitHub:
+
+```sh
+pipx install git+https://github.com/richlee/lazybooks.git
+```
+
+`pipx` installs Python dependencies such as Textual. It does not install system
+tools. For a real cloud-backed library you still need:
+
+- `rclone`
+- an authenticated `rclone` remote
+- `fzf`, only if you want `bookpick`
+- Calibre, only if you want Calibre metadata or taxonomy workflows
+
+On macOS:
+
+```sh
+brew install pipx rclone fzf
+pipx ensurepath
+pipx install git+https://github.com/richlee/lazybooks.git
+```
+
+On Windows PowerShell:
+
+```powershell
+winget install Python.Python.3.13
+winget install Rclone.Rclone
+py -m pip install --user pipx
+py -m pipx ensurepath
+pipx install git+https://github.com/richlee/lazybooks.git
+```
+
+After installing, run:
+
+```sh
+lazybooks doctor
+```
+
+## Install From A Checkout
 
 Clone the repo and install the package in a virtual environment:
 
@@ -223,6 +284,7 @@ but a config file is easier for multi-library use.
 Use a different config file for testing or demos:
 
 ```sh
+lazybooks --demo
 lazybooks --config examples/demo/config.toml
 bookfind --config examples/demo/config.toml secure
 ```
@@ -299,6 +361,7 @@ Repeat for each library you want available from other machines.
 Then verify the configured refresh path:
 
 ```sh
+lazybooks doctor
 bookrefresh tech
 bookrefresh --all
 ```

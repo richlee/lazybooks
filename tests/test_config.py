@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lazybooks.config import load_libraries, rewrite_remote, select_library
+from lazybooks.config import demo_root, load_libraries, rewrite_remote, select_library
 
 
 def test_load_libraries_from_config(tmp_path: Path) -> None:
@@ -46,3 +46,12 @@ def test_demo_config_loads() -> None:
     assert [library.key for library in libraries] == ["engineering", "personal"]
     assert libraries[default_index].key == "engineering"
     assert libraries[0].manifest.exists()
+
+
+def test_packaged_demo_config_loads() -> None:
+    libraries, default_index = load_libraries(demo_root() / "config.toml")
+
+    assert [library.key for library in libraries] == ["engineering", "personal"]
+    assert libraries[default_index].key == "engineering"
+    assert libraries[0].manifest.exists()
+    assert libraries[0].cache.exists()

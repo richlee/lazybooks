@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from importlib import metadata
 from pathlib import Path
 
 
@@ -12,7 +13,10 @@ def project_version() -> str:
     try:
         return (app_root() / "VERSION").read_text(encoding="utf-8").strip() or "0+unknown"
     except Exception:
-        return "0+unknown"
+        try:
+            return metadata.version("lazybooks")
+        except Exception:
+            return "0+unknown"
 
 
 def git_value(*args: str) -> str:

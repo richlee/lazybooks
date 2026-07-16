@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-07-16T08:00:00+00:00",
+  "books": [
+    {
+      "title": "Accelerate",
+      "author": "Nicole Forsgren, Jez Humble, Gene Kim",
+      "category": "engineering-leadership-career",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/engineering/Accelerate.pdf",
+      "remote_path": "demo:engineering/Accelerate.pdf"
+    },
+    {
+      "title": "Building Evolutionary Architectures",
+      "author": "Neal Ford, Rebecca Parsons, Patrick Kua",
+      "category": "software-architecture-design",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/engineering/Building Evolutionary Architectures.pdf",
+      "remote_path": "demo:engineering/Building Evolutionary Architectures.pdf"
+    },
+    {
+      "title": "Cloud Native Patterns",
+      "author": "Cornelia Davis",
+      "category": "cloud-devops-platform",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/engineering/Cloud Native Patterns.pdf",
+      "remote_path": "demo:engineering/Cloud Native Patterns.pdf"
+    },
+    {
+      "title": "Designing Data-Intensive Applications",
+      "author": "Martin Kleppmann",
+      "category": "software-architecture-design",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/engineering/Designing Data-Intensive Applications.pdf",
+      "remote_path": "demo:engineering/Designing Data-Intensive Applications.pdf"
+    },
+    {
+      "title": "Secure by Design",
+      "author": "Dan Bergh Johnsson, Daniel Deogun, Daniel Sawano",
+      "category": "security-reliability",
+      "source": "Demo Calibre",
+      "canonical_path": "/demo-library/engineering/Secure by Design.pdf",
+      "remote_path": "demo:engineering/Secure by Design.pdf"
+    }
+  ]
+}

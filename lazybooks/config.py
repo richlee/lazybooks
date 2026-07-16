@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tomllib
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 
 
@@ -23,6 +24,10 @@ class LibraryConfig:
 
 def expand_path(value: str) -> Path:
     return Path(value).expanduser()
+
+
+def demo_root() -> Path:
+    return Path(str(resources.files("lazybooks.demo")))
 
 
 def local_prefix(value: str) -> str:
@@ -60,7 +65,8 @@ def load_libraries(config_path: str | Path | None = DEFAULT_CONFIG) -> tuple[lis
     if not config_path.exists():
         return fallback_library(), 0
 
-    data = tomllib.loads(config_path.read_text())
+    config_text = config_path.read_text().replace("{demo_root}", str(demo_root()))
+    data = tomllib.loads(config_text)
     default_key = str(data.get("default", ""))
     global_cache = str(data.get("cache", os.environ.get("LAZYBOOKS_CACHE", "~/book-cache")))
     configured_remote = str(data.get("remote", "onedrive:"))

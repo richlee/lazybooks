@@ -1,0 +1,16 @@
+default = "engineering"
+cache = "{demo_root}/cache"
+remote = "demo:"
+local_prefix = "/demo-library/"
+
+[libraries.engineering]
+name = "Engineering"
+index_dir = "{demo_root}/book-indexes/engineering"
+manifest = "{demo_root}/book-indexes/engineering/manifest.json"
+index_remote = "demo:book-indexes/engineering"
+
+[libraries.personal]
+name = "Personal"
+index_dir = "{demo_root}/book-indexes/personal"
+manifest = "{demo_root}/book-indexes/personal/manifest.json"
+index_remote = "demo:book-indexes/personal"
