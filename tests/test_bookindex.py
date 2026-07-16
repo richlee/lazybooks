@@ -52,6 +52,8 @@ def test_bookindex_all_uses_configured_library_roots(tmp_path: Path) -> None:
     pdf.write_text("placeholder")
     index_dir = tmp_path / "index"
     config = tmp_path / "config.toml"
+    library_config_path = library.as_posix()
+    index_config_path = index_dir.as_posix()
     config.write_text(
         f"""
 default_source = "google"
@@ -60,12 +62,12 @@ default_library = "reference"
 [sources.google]
 name = "Google Drive"
 remote = "google-drive:"
-local_prefix = "{library}{os.sep}"
+local_prefix = "{library_config_path}/"
 
 [sources.google.libraries.reference]
 name = "Reference"
-root = "{library}"
-index_dir = "{index_dir}"
+root = "{library_config_path}"
+index_dir = "{index_config_path}"
 index_remote = "google-drive:Library/book-indexes/reference"
 title = "Reference Books"
 library_name = "Reference"
