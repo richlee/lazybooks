@@ -404,6 +404,16 @@ Build one configured library with:
 bookindex --library onedrive.tech
 ```
 
+Build and publish configured libraries in one step:
+
+```sh
+bookindex --all --publish
+bookindex --library google.assurance --publish
+```
+
+Publishing uploads only `index.html` and `manifest.json` to each library's
+configured `index_remote`.
+
 When `--local-prefix` and `--remote` are supplied, the manifest includes
 `remote_path` for each matching book. That is preferred for cross-platform use
 because `lazybooks` can fetch directly from the cloud path without relying on
@@ -421,7 +431,9 @@ rclone copy "$HOME/book-indexes/tech" \
   --filter '- *'
 ```
 
-Repeat for each library you want available from other machines.
+Repeat for each library you want available from other machines, or use
+`bookindex --all --publish` when the libraries are configured in
+`~/.config/lazybooks/config.toml`.
 
 Then verify the configured refresh path:
 
