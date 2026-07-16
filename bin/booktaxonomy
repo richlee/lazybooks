@@ -5,33 +5,24 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import shutil
 import sqlite3
+import tomllib
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
+from importlib import resources
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lazybooks.config import LibraryConfig, load_libraries
+from lazybooks.config import LibraryConfig, available_library_keys, load_libraries, matching_libraries, qualified_library_key
 
 
-NOISY_TAGS = {
-    "",
-    "books",
-    "book",
-    "ebook",
-    "ebooks",
-    "pdf",
-    "pdf image",
-    "personal",
-    "self",
-    "tech",
-    "unknown",
-}
+DEFAULT_TAXONOMY_CONFIG = Path(os.environ.get("LAZYBOOKS_TAXONOMY_CONFIG", "~/.config/lazybooks/taxonomy.toml")).expanduser()
 
 
 @dataclass(frozen=True)
@@ -54,6 +45,28 @@ class Proposal:
     reason: str
 
 
+@dataclass(frozen=True)
+class TaxonomyRule:
+    category: str
+    keywords: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TaxonomyProfile:
+    key: str
+    manual_review_category: str
+    min_recurring_tag_count: int
+    noisy_tags: frozenset[str]
+    rules: tuple[TaxonomyRule, ...]
+
+
+@dataclass(frozen=True)
+class TaxonomyConfig:
+    path: Path | None
+    library_profiles: dict[str, str]
+    profiles: dict[str, TaxonomyProfile]
+
+
 def normalize(value: str) -> str:
     value = re.sub(r"<[^>]+>", " ", value)
     value = value.replace("%2B", " ").replace("_", " ").replace("-", " ")
@@ -64,11 +77,16 @@ def split_tags(value: str) -> list[str]:
     return [tag.strip() for tag in value.split(",") if tag.strip()]
 
 
-def useful_tags(value: str, tag_counts: Counter[str] | None = None, min_count: int = 1) -> list[str]:
+def useful_tags(
+    value: str,
+    noisy_tags: frozenset[str],
+    tag_counts: Counter[str] | None = None,
+    min_count: int = 1,
+) -> list[str]:
     tags = []
     for tag in split_tags(value):
         key = normalize(tag)
-        if key in NOISY_TAGS or re.fullmatch(r"meap v?\d+", key):
+        if key in noisy_tags or re.fullmatch(r"meap v?\d+", key):
             continue
         if key.startswith("team "):
             continue
@@ -78,10 +96,10 @@ def useful_tags(value: str, tag_counts: Counter[str] | None = None, min_count: i
     return tags
 
 
-def recurring_tag_counts(books: list[MetadataBook]) -> Counter[str]:
+def recurring_tag_counts(books: list[MetadataBook], profile: TaxonomyProfile) -> Counter[str]:
     counts: Counter[str] = Counter()
     for book in books:
-        counts.update({normalize(tag) for tag in useful_tags(book.tags)})
+        counts.update({normalize(tag) for tag in useful_tags(book.tags, profile.noisy_tags)})
     return counts
 
 
@@ -170,58 +188,94 @@ def match_any(text: str, words: tuple[str, ...]) -> str | None:
     return None
 
 
-TECH_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("dotnet-microsoft", ("c#", ".net", "dotnet", "asp.net", "visual studio", "azure devops", "wpf", "xaml", "microsoft", " net 9")),
-    ("software-architecture-design", ("architecture", "architecting", "domain driven", "ddd", "microservices", "microservice success", "design patterns", "enterprise integration", "event driven", "systems thinking", "diagramming", "collaborative software design", "communication patterns")),
-    ("web-api-development", ("api", "openapi", "swagger", "fastapi", "rest", "web applications", "http", "micro frontends", "fiddler")),
-    ("cloud-devops-platform", ("kubernetes", "docker", "terraform", "ansible", "devops", "cloud", "serverless", "openshift", "linux", "tmux", "unix", "automation", "git", "infrastructure", "open source")),
-    ("testing-quality", ("test", "testing", "quality", "contract testing", "specification by example")),
-    ("security", ("security", "cyber", "threat", "cryptography", "hacking", "devsecops")),
-    ("data-ai", ("artificial intelligence", "artificial intelligen", "machine learning", "data science", "data architecture", "dashboard", "visualization", "analytics", "ai ", "bad data", "big data", "data mesh", "streaming data", "llm")),
-    ("databases-data-systems", ("sql", "database", "postgres", "oracle", "data warehouse")),
-    ("programming-languages", ("python", "javascript", "typescript", "java", "ruby", "scala", "f#", "functional", "programming", "algorithms", "regular expressions", "vim", "markdown", "coding interviews", "software engineer", "pragmatic programmer", "creative programmer", "programmers", "competitive programmer", "philosophy of c")),
-    ("agile-product-delivery", ("agile", "scrum", "kanban", "lean", "product", "user stories", "impact mapping", "feature management", "continuous delivery", "noestimates", "workshops", "business model", "startup", "entrepreneur", "investing", "john cutler")),
-    ("ux-design-research", ("user experience", "ux", "designing for", "research", "usability", "content strategy", "design is a job", "make it so")),
-    ("engineering-leadership-career", ("leadership", "management", "career", "team", "meetings", "convening", "software craftsmanship", "apprenticeship", "lead software", "manage yourself", "lead and serve", "remote work", "allies", "alliances", "listen", "deal with it")),
-    ("technical-creativity-tools", ("mind performance", "hacks", "creativity", "geeks", "tools", "mind mapping", "day-to-day", "focus")),
-)
+def merge_dicts(base: dict, override: dict) -> dict:
+    result = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = merge_dicts(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
-PERSONAL_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("technology-misfiled", ("microservices", "programming", "software", "devops", "kubernetes", "docker", "code ")),
-    ("buddhism-meditation", ("buddh", "meditat", "vipassana", "dhamma", "dharma", "zen", "sutta", "discourses", "analayo", "gateless", "defilements", "jhana", "mindfulness", "lama", "yeshe", "dependent origination", "emptiness", "hindrances", "glenn wallis", "mctb2", "edmonton retreat")),
-    ("taichi-qigong-tcm", ("tai chi", "taichi", "qi gong", "qigong", "tcm", "ki breathing", "kibreathing", "acupuncture", "meridian", "daoist", "taoist", "internal alchemy", "hara", "inner smile", "healing sounds", "psychic channels")),
-    ("yoga-tantra-energy", ("yoga", "tantra", "kundalini", "kriya", "chakra", "prana", "breathing in the light", "lightening path", "great bliss", "holosync", "energetics")),
-    ("health-fitness-nutrition", ("fitness", "nutrition", "diet", "bulletproof", "supplement", "exercise", "excercise", "ultra", "chef", "shopping guide", "alcohol infographic", "fasting", "weight loss", "sleep", "paleo", "cookbook", "keto", "fat loss", "hiit", "caveman", "workouts", "muscle recovery", "if guide", "intermittent feeding")),
-    ("psychology-self-development", ("psychology", "shadow work", "survival mode", "gettingoutofsurvivalmode", "microaggression", "listen", "introspect", "forget", "remember", "hollis", "archetypal", "codependency", "emotional agility", "essentialism", "approval trap", "rituals", "win the day", "therapist", "fantasy", "self help", "motivation", "creative minds", "30 day upgrade")),
-    ("philosophy-consciousness", ("philosophy", "consciousness", "plausibility", "think", "kuhn", "scientific revolutions", "dancing wu li", "science of", "advaita", "nonduality", "non-dual", "awareness", "free will", "in praise of love", "badiou", "mind and", "hobbes", "leviathan", "everycradleisagrave", "beautiful days")),
-    ("science-nature", ("science", "physics", "biology", "nature", "cold fusion", "civilization", "history", "jcmns", "magnetic fields", "biological transmutation", "origin of life", "future of life", "feynman", "quarks", "brain", "about time", "carl sagan", "universe", "skepticism")),
-    ("esoterica-occult", ("occult", "mysteries", "unvelied", "unveiled", "bodri", "reich", "protection method", "tripura", "saraswati", "avision", "evola", "hermetic", "terence mckenna", "alchemy", "night side", "subtle bodies", "loco austriaco")),
-    ("religion-atheism", ("religion", "atheism", "atheist", "god", "christian", "theology", "spiritual", "islam", "sam harris")),
-    ("business-finance-startups", ("business", "finance", "economics", "startup", "entrepreneur", "running lean", "cash in a flash", "money")),
-    ("music-arts-skills", ("music", "guitar", "drawing", "art", "piano", "singing", "creativity")),
-    ("writing-research-study", ("writing", "research", "study", "course", "guide for the seeker", "guidance for the seeker", "phd")),
-)
+def bundled_taxonomy_data() -> dict:
+    text = resources.files("lazybooks").joinpath("default_taxonomy.toml").read_text(encoding="utf-8")
+    return tomllib.loads(text)
 
 
-def classify(book: MetadataBook, tag_counts: Counter[str]) -> Proposal:
+def load_taxonomy_config(path: Path | None = DEFAULT_TAXONOMY_CONFIG) -> TaxonomyConfig:
+    data = bundled_taxonomy_data()
+    used_path: Path | None = None
+    if path is not None:
+        path = path.expanduser()
+        if path.exists():
+            data = merge_dicts(data, tomllib.loads(path.read_text(encoding="utf-8")))
+            used_path = path
+
+    defaults = data.get("defaults", {})
+    default_min_count = int(defaults.get("min_recurring_tag_count", 2))
+    default_noisy_tags = frozenset(normalize(str(tag)) for tag in defaults.get("noisy_tags", []))
+    profiles: dict[str, TaxonomyProfile] = {}
+    for profile_key, values in data.get("profiles", {}).items():
+        if not isinstance(values, dict):
+            continue
+        noisy_tags = set(default_noisy_tags)
+        noisy_tags.update(normalize(str(tag)) for tag in values.get("noisy_tags", []))
+        rules = []
+        for item in values.get("rules", []):
+            if not isinstance(item, dict):
+                continue
+            category = str(item.get("category", "")).strip()
+            keywords = tuple(str(keyword).casefold() for keyword in item.get("keywords", []) if str(keyword).strip())
+            if category and keywords:
+                rules.append(TaxonomyRule(category=category, keywords=keywords))
+        profiles[str(profile_key)] = TaxonomyProfile(
+            key=str(profile_key),
+            manual_review_category=str(values.get("manual_review_category", f"{profile_key}-manual-review")),
+            min_recurring_tag_count=int(values.get("min_recurring_tag_count", default_min_count)),
+            noisy_tags=frozenset(noisy_tags),
+            rules=tuple(rules),
+        )
+
+    library_profiles = {str(key): str(value) for key, value in data.get("libraries", {}).items()}
+    return TaxonomyConfig(path=used_path, library_profiles=library_profiles, profiles=profiles)
+
+
+def profile_for_library(library: LibraryConfig, taxonomy: TaxonomyConfig) -> TaxonomyProfile:
+    profile_key = (
+        taxonomy.library_profiles.get(qualified_library_key(library))
+        or taxonomy.library_profiles.get(f"{library.source_key}:{library.key}")
+        or taxonomy.library_profiles.get(library.key)
+        or (library.key if library.key in taxonomy.profiles else "")
+    )
+    if profile_key and profile_key in taxonomy.profiles:
+        return taxonomy.profiles[profile_key]
+    return TaxonomyProfile(
+        key="default",
+        manual_review_category=f"{library.key}-manual-review",
+        min_recurring_tag_count=2,
+        noisy_tags=frozenset(),
+        rules=(),
+    )
+
+
+def classify(book: MetadataBook, tag_counts: Counter[str], profile: TaxonomyProfile) -> Proposal:
     text = normalize(" ".join([book.title, book.authors, book.tags, book.comments]))
-    tags = useful_tags(book.tags, tag_counts, min_count=2)
+    tags = useful_tags(book.tags, profile.noisy_tags, tag_counts, min_count=profile.min_recurring_tag_count)
     tag_text = normalize(" ".join(tags))
-    rules = TECH_RULES if book.library == "tech" else PERSONAL_RULES
 
-    for category, words in rules:
-        hit = match_any(text, words)
+    for rule in profile.rules:
+        hit = match_any(text, rule.keywords)
         if hit:
             confidence = "high" if hit in tag_text or hit in normalize(book.title) else "medium"
-            return Proposal(book, category, confidence, hit)
+            return Proposal(book, rule.category, confidence, hit)
 
     if tags:
-        return Proposal(book, f"{book.library}-manual-review", "low", f"unmapped tag: {tags[0]}")
-    return Proposal(book, f"{book.library}-manual-review", "low", "insufficient metadata")
+        return Proposal(book, profile.manual_review_category, "low", f"unmapped tag: {tags[0]}")
+    return Proposal(book, profile.manual_review_category, "low", "insufficient metadata")
 
 
-def write_csv(path: Path, proposals: list[Proposal], tag_counts: Counter[str]) -> None:
+def write_csv(path: Path, proposals: list[Proposal], tag_counts: Counter[str], profile: TaxonomyProfile) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["library", "title", "authors", "current_tags", "recurring_tags", "proposed_category", "confidence", "reason"])
@@ -232,7 +286,7 @@ def write_csv(path: Path, proposals: list[Proposal], tag_counts: Counter[str]) -
                     proposal.book.title,
                     proposal.book.authors,
                     proposal.book.tags,
-                    "; ".join(useful_tags(proposal.book.tags, tag_counts, min_count=2)),
+                    "; ".join(useful_tags(proposal.book.tags, profile.noisy_tags, tag_counts, min_count=profile.min_recurring_tag_count)),
                     proposal.category,
                     proposal.confidence,
                     proposal.reason,
@@ -240,7 +294,7 @@ def write_csv(path: Path, proposals: list[Proposal], tag_counts: Counter[str]) -
             )
 
 
-def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]]) -> None:
+def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]], profiles_by_library: dict[str, TaxonomyProfile]) -> None:
     lines = [
         "# Lazybooks Taxonomy Proposal",
         "",
@@ -251,6 +305,7 @@ def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]]) -
     ]
 
     for library, proposals in proposals_by_library.items():
+        profile = profiles_by_library[library]
         counts = Counter(proposal.category for proposal in proposals)
         confidence = Counter(proposal.confidence for proposal in proposals)
         lines.extend(
@@ -258,6 +313,8 @@ def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]]) -
                 f"## {library.title()}",
                 "",
                 f"- Books: {len(proposals)}",
+                f"- Profile: `{profile.key}`",
+                f"- Rules: {len(profile.rules)}",
                 f"- Confidence: high {confidence['high']}, medium {confidence['medium']}, low {confidence['low']}",
                 "",
                 "| Proposed category | Count |",
@@ -269,6 +326,40 @@ def write_summary(path: Path, proposals_by_library: dict[str, list[Proposal]]) -
         lines.extend(["", f"Detail CSV: `reports/{library}-taxonomy-proposal.csv`", ""])
 
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def explain_library(library: LibraryConfig, taxonomy: TaxonomyConfig, output_dir: Path) -> None:
+    profile = profile_for_library(library, taxonomy)
+    books = load_db_books(library)
+    tag_counts = recurring_tag_counts(books, profile)
+    proposals = [classify(book, tag_counts, profile) for book in books]
+    category_counts = Counter(proposal.category for proposal in proposals)
+    confidence = Counter(proposal.confidence for proposal in proposals)
+
+    print(f"Library: {qualified_library_key(library)} ({library.name})")
+    print(f"Profile: {profile.key}")
+    print(f"Taxonomy config: {taxonomy.path or 'bundled defaults'}")
+    print(f"Calibre books found: {len(books)}")
+    print(f"Rules: {len(profile.rules)}")
+    print(f"Manual-review category: {profile.manual_review_category}")
+    print(f"Recurring tag threshold: {profile.min_recurring_tag_count}")
+    print(f"Report CSV: {output_dir / f'{library.key}-taxonomy-proposal.csv'}")
+    print("")
+    print(f"Confidence: high {confidence['high']}, medium {confidence['medium']}, low {confidence['low']}")
+    print("")
+    print("Top proposed categories:")
+    for category, count in category_counts.most_common(12):
+        print(f"  {category}: {count}")
+    print("")
+    print("Top recurring tags:")
+    for tag, count in tag_counts.most_common(12):
+        print(f"  {tag}: {count}")
+    print("")
+    print("Configured rules:")
+    for rule in profile.rules:
+        preview = ", ".join(rule.keywords[:6])
+        suffix = "..." if len(rule.keywords) > 6 else ""
+        print(f"  {rule.category}: {preview}{suffix}")
 
 
 def ensure_tag(conn: sqlite3.Connection, name: str) -> int:
@@ -310,36 +401,67 @@ def apply_proposals(proposals: list[Proposal]) -> list[tuple[Path, int, Path]]:
     return applied
 
 
+def report_key(library: LibraryConfig, selected: list[LibraryConfig]) -> str:
+    duplicates = Counter(item.key for item in selected)
+    return qualified_library_key(library) if duplicates[library.key] > 1 else library.key
+
+
 def selected_libraries(names: list[str]) -> list[LibraryConfig]:
     libraries, _ = load_libraries()
     if not names:
-        return [library for library in libraries if library.key in {"tech", "personal"}]
-    requested = set(names)
-    selected = [library for library in libraries if library.key in requested]
-    missing = requested - {library.key for library in selected}
-    if missing:
-        raise SystemExit(f"Unknown libraries: {', '.join(sorted(missing))}")
+        return [
+            library
+            for library in libraries
+            if library.key in {"tech", "personal"} or qualified_library_key(library) in {"onedrive.tech", "onedrive.personal"}
+        ]
+    selected: list[LibraryConfig] = []
+    for name in names:
+        matches = matching_libraries(libraries, name)
+        if not matches:
+            raise SystemExit(f"Unknown library: {name}\nAvailable libraries: {available_library_keys(libraries)}")
+        if len(matches) > 1:
+            raise SystemExit(
+                f"Ambiguous library: {name}\nUse one of: "
+                + ", ".join(qualified_library_key(library) for library in matches)
+            )
+        selected.append(matches[0])
     return selected
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Propose a small review taxonomy for Calibre-backed lazybooks libraries.")
     parser.add_argument("libraries", nargs="*", help="Library keys to process. Defaults to tech and personal.")
+    parser.add_argument("--taxonomy-config", type=Path, default=DEFAULT_TAXONOMY_CONFIG, help="Path to taxonomy TOML. Defaults to LAZYBOOKS_TAXONOMY_CONFIG or ~/.config/lazybooks/taxonomy.toml.")
     parser.add_argument("--output-dir", type=Path, default=Path("reports"), help="Directory for Markdown and CSV reports.")
+    parser.add_argument("--explain", metavar="LIBRARY", help="Explain taxonomy profile, rules, and current proposal summary for one library.")
     parser.add_argument("--apply", action="store_true", help="Apply proposed taxonomy tags to Calibre metadata.db files after writing reports.")
     args = parser.parse_args()
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    proposals_by_library: dict[str, list[Proposal]] = {}
-    for library in selected_libraries(args.libraries):
-        books = load_db_books(library)
-        tag_counts = recurring_tag_counts(books)
-        proposals = [classify(book, tag_counts) for book in books]
-        proposals.sort(key=lambda item: (item.category.casefold(), item.book.title.casefold()))
-        proposals_by_library[library.key] = proposals
-        write_csv(args.output_dir / f"{library.key}-taxonomy-proposal.csv", proposals, tag_counts)
+    if args.apply and not args.libraries:
+        parser.error("--apply requires explicit library names, e.g. booktaxonomy onedrive.tech --apply")
 
-    write_summary(args.output_dir / "taxonomy-proposal.md", proposals_by_library)
+    taxonomy = load_taxonomy_config(args.taxonomy_config)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    if args.explain:
+        selected = selected_libraries([args.explain])
+        explain_library(selected[0], taxonomy, args.output_dir)
+        return 0
+
+    proposals_by_library: dict[str, list[Proposal]] = {}
+    profiles_by_library: dict[str, TaxonomyProfile] = {}
+    selected = selected_libraries(args.libraries)
+    for library in selected:
+        profile = profile_for_library(library, taxonomy)
+        books = load_db_books(library)
+        tag_counts = recurring_tag_counts(books, profile)
+        proposals = [classify(book, tag_counts, profile) for book in books]
+        proposals.sort(key=lambda item: (item.category.casefold(), item.book.title.casefold()))
+        key = report_key(library, selected)
+        proposals_by_library[key] = proposals
+        profiles_by_library[key] = profile
+        write_csv(args.output_dir / f"{key}-taxonomy-proposal.csv", proposals, tag_counts, profile)
+
+    write_summary(args.output_dir / "taxonomy-proposal.md", proposals_by_library, profiles_by_library)
     if args.apply:
         all_proposals = [proposal for proposals in proposals_by_library.values() for proposal in proposals]
         for db_path, count, backup in apply_proposals(all_proposals):

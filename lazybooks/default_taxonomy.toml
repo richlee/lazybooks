@@ -1,0 +1,129 @@
+[defaults]
+min_recurring_tag_count = 2
+noisy_tags = [
+  "",
+  "book",
+  "books",
+  "ebook",
+  "ebooks",
+  "pdf",
+  "pdf image",
+  "personal",
+  "self",
+  "tech",
+  "unknown",
+]
+
+[libraries]
+tech = "tech"
+personal = "personal"
+
+[profiles.tech]
+manual_review_category = "tech-manual-review"
+
+[[profiles.tech.rules]]
+category = "dotnet-microsoft"
+keywords = ["c#", ".net", "dotnet", "asp.net", "visual studio", "azure devops", "wpf", "xaml", "microsoft", " net 9"]
+
+[[profiles.tech.rules]]
+category = "software-architecture-design"
+keywords = ["architecture", "architecting", "domain driven", "ddd", "microservices", "microservice success", "design patterns", "enterprise integration", "event driven", "systems thinking", "diagramming", "collaborative software design", "communication patterns"]
+
+[[profiles.tech.rules]]
+category = "web-api-development"
+keywords = ["api", "openapi", "swagger", "fastapi", "rest", "web applications", "http", "micro frontends", "fiddler"]
+
+[[profiles.tech.rules]]
+category = "cloud-devops-platform"
+keywords = ["kubernetes", "docker", "terraform", "ansible", "devops", "cloud", "serverless", "openshift", "linux", "tmux", "unix", "automation", "git", "infrastructure", "open source"]
+
+[[profiles.tech.rules]]
+category = "testing-quality"
+keywords = ["test", "testing", "quality", "contract testing", "specification by example"]
+
+[[profiles.tech.rules]]
+category = "security"
+keywords = ["security", "cyber", "threat", "cryptography", "hacking", "devsecops"]
+
+[[profiles.tech.rules]]
+category = "data-ai"
+keywords = ["artificial intelligence", "artificial intelligen", "machine learning", "data science", "data architecture", "dashboard", "visualization", "analytics", "ai ", "bad data", "big data", "data mesh", "streaming data", "llm"]
+
+[[profiles.tech.rules]]
+category = "databases-data-systems"
+keywords = ["sql", "database", "postgres", "oracle", "data warehouse"]
+
+[[profiles.tech.rules]]
+category = "programming-languages"
+keywords = ["python", "javascript", "typescript", "java", "ruby", "scala", "f#", "functional", "programming", "algorithms", "regular expressions", "vim", "markdown", "coding interviews", "software engineer", "pragmatic programmer", "creative programmer", "programmers", "competitive programmer", "philosophy of c"]
+
+[[profiles.tech.rules]]
+category = "agile-product-delivery"
+keywords = ["agile", "scrum", "kanban", "lean", "product", "user stories", "impact mapping", "feature management", "continuous delivery", "noestimates", "workshops", "business model", "startup", "entrepreneur", "investing", "john cutler"]
+
+[[profiles.tech.rules]]
+category = "ux-design-research"
+keywords = ["user experience", "ux", "designing for", "research", "usability", "content strategy", "design is a job", "make it so"]
+
+[[profiles.tech.rules]]
+category = "engineering-leadership-career"
+keywords = ["leadership", "management", "career", "team", "meetings", "convening", "software craftsmanship", "apprenticeship", "lead software", "manage yourself", "lead and serve", "remote work", "allies", "alliances", "listen", "deal with it"]
+
+[[profiles.tech.rules]]
+category = "technical-creativity-tools"
+keywords = ["mind performance", "hacks", "creativity", "geeks", "tools", "mind mapping", "day-to-day", "focus"]
+
+[profiles.personal]
+manual_review_category = "personal-manual-review"
+
+[[profiles.personal.rules]]
+category = "technology-misfiled"
+keywords = ["microservices", "programming", "software", "devops", "kubernetes", "docker", "code "]
+
+[[profiles.personal.rules]]
+category = "buddhism-meditation"
+keywords = ["buddh", "meditat", "vipassana", "dhamma", "dharma", "zen", "sutta", "discourses", "analayo", "gateless", "defilements", "jhana", "mindfulness", "lama", "yeshe", "dependent origination", "emptiness", "hindrances", "glenn wallis", "mctb2", "edmonton retreat"]
+
+[[profiles.personal.rules]]
+category = "taichi-qigong-tcm"
+keywords = ["tai chi", "taichi", "qi gong", "qigong", "tcm", "ki breathing", "kibreathing", "acupuncture", "meridian", "daoist", "taoist", "internal alchemy", "hara", "inner smile", "healing sounds", "psychic channels"]
+
+[[profiles.personal.rules]]
+category = "yoga-tantra-energy"
+keywords = ["yoga", "tantra", "kundalini", "kriya", "chakra", "prana", "breathing in the light", "lightening path", "great bliss", "holosync", "energetics"]
+
+[[profiles.personal.rules]]
+category = "health-fitness-nutrition"
+keywords = ["fitness", "nutrition", "diet", "bulletproof", "supplement", "exercise", "excercise", "ultra", "chef", "shopping guide", "alcohol infographic", "fasting", "weight loss", "sleep", "paleo", "cookbook", "keto", "fat loss", "hiit", "caveman", "workouts", "muscle recovery", "if guide", "intermittent feeding"]
+
+[[profiles.personal.rules]]
+category = "psychology-self-development"
+keywords = ["psychology", "shadow work", "survival mode", "gettingoutofsurvivalmode", "microaggression", "listen", "introspect", "forget", "remember", "hollis", "archetypal", "codependency", "emotional agility", "essentialism", "approval trap", "rituals", "win the day", "therapist", "fantasy", "self help", "motivation", "creative minds", "30 day upgrade"]
+
+[[profiles.personal.rules]]
+category = "philosophy-consciousness"
+keywords = ["philosophy", "consciousness", "plausibility", "think", "kuhn", "scientific revolutions", "dancing wu li", "science of", "advaita", "nonduality", "non-dual", "awareness", "free will", "in praise of love", "badiou", "mind and", "hobbes", "leviathan", "everycradleisagrave", "beautiful days"]
+
+[[profiles.personal.rules]]
+category = "science-nature"
+keywords = ["science", "physics", "biology", "nature", "cold fusion", "civilization", "history", "jcmns", "magnetic fields", "biological transmutation", "origin of life", "future of life", "feynman", "quarks", "brain", "about time", "carl sagan", "universe", "skepticism"]
+
+[[profiles.personal.rules]]
+category = "esoterica-occult"
+keywords = ["occult", "mysteries", "unvelied", "unveiled", "bodri", "reich", "protection method", "tripura", "saraswati", "avision", "evola", "hermetic", "terence mckenna", "alchemy", "night side", "subtle bodies", "loco austriaco"]
+
+[[profiles.personal.rules]]
+category = "religion-atheism"
+keywords = ["religion", "atheism", "atheist", "god", "christian", "theology", "spiritual", "islam", "sam harris"]
+
+[[profiles.personal.rules]]
+category = "business-finance-startups"
+keywords = ["business", "finance", "economics", "startup", "entrepreneur", "running lean", "cash in a flash", "money"]
+
+[[profiles.personal.rules]]
+category = "music-arts-skills"
+keywords = ["music", "guitar", "drawing", "art", "piano", "singing", "creativity"]
+
+[[profiles.personal.rules]]
+category = "writing-research-study"
+keywords = ["writing", "research", "study", "course", "guide for the seeker", "guidance for the seeker", "phd"]

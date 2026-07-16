@@ -1,0 +1,31 @@
+[defaults]
+min_recurring_tag_count = 2
+noisy_tags = ["", "book", "books", "ebook", "ebooks", "pdf", "personal", "self", "tech", "unknown"]
+
+# Map libraries to profiles. Use either bare keys for unique libraries or
+# source-qualified keys when multiple sources have the same library name.
+[libraries]
+"onedrive.tech" = "tech"
+"onedrive.personal" = "personal"
+
+[profiles.tech]
+manual_review_category = "tech-manual-review"
+
+[[profiles.tech.rules]]
+category = "software-architecture-design"
+keywords = ["architecture", "domain driven", "microservices", "event driven"]
+
+[[profiles.tech.rules]]
+category = "cloud-devops-platform"
+keywords = ["kubernetes", "docker", "terraform", "devops", "cloud"]
+
+[profiles.personal]
+manual_review_category = "personal-manual-review"
+
+[[profiles.personal.rules]]
+category = "buddhism-meditation"
+keywords = ["buddh", "meditat", "dharma", "zen", "mindfulness"]
+
+[[profiles.personal.rules]]
+category = "health-fitness-nutrition"
+keywords = ["fitness", "nutrition", "sleep", "diet", "exercise"]

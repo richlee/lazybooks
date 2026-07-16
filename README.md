@@ -600,7 +600,7 @@ libraries, then looks at title, author, existing tags, and comments before
 writing review files:
 
 ```sh
-booktaxonomy tech personal
+booktaxonomy onedrive.tech onedrive.personal
 ```
 
 Output:
@@ -624,22 +624,39 @@ book titles.
 
 ### Improve The Taxonomy
 
-The current classifier is deliberately simple and lives in `bin/booktaxonomy`.
-The rule lists are:
+The classifier is deliberately simple and rules-based. The bundled defaults live
+in `lazybooks/default_taxonomy.toml`; copy the relevant parts to
+`~/.config/lazybooks/taxonomy.toml` when you want local customisation. A small
+example is included at `examples/taxonomy.toml`.
 
-- `TECH_RULES`
-- `PERSONAL_RULES`
+Each profile maps ordered keyword rules to categories. Edit those rules when a
+category is too broad, too narrow, or repeatedly wrong:
 
-Each rule maps a category to title/tag/comment keywords. Edit those rules when a
-category is too broad, too narrow, or repeatedly wrong.
+```toml
+[libraries]
+"onedrive.tech" = "tech"
+
+[profiles.tech]
+manual_review_category = "tech-manual-review"
+
+[[profiles.tech.rules]]
+category = "cloud-devops-platform"
+keywords = ["kubernetes", "docker", "terraform", "devops", "cloud"]
+```
+
+Explain the active profile before generating reports:
+
+```sh
+booktaxonomy --explain onedrive.tech
+```
 
 This is a good place for manual or assistive AI review:
 
-1. Run `booktaxonomy tech personal`.
+1. Run `booktaxonomy onedrive.tech onedrive.personal`.
 2. Review `reports/*-taxonomy-proposal.csv`.
 3. Look especially at `*-manual-review`, low-confidence rows, and categories with only one or two books.
 4. Ask an assistant or LLM to propose a smaller controlled taxonomy from the CSV, but check the result yourself.
-5. Update the rules in `bin/booktaxonomy`.
+5. Update `~/.config/lazybooks/taxonomy.toml`.
 6. Rerun `booktaxonomy` until the category list is useful.
 
 Do not aim for perfect classification. A manual-review bucket is better than
@@ -650,7 +667,7 @@ inventing misleading categories from poor metadata.
 When the proposal looks good:
 
 ```sh
-booktaxonomy tech personal --apply
+booktaxonomy onedrive.tech onedrive.personal --apply
 ```
 
 `--apply` creates a timestamped backup beside each Calibre database:
@@ -662,6 +679,9 @@ metadata.db.lazybooks-backup-YYYYMMDD-HHMMSS
 It then replaces each selected Calibre book's tags with its proposed taxonomy
 category. It works on all Calibre book records in the selected libraries, not
 just PDFs.
+
+`--apply` requires explicit library names so a multi-provider setup cannot
+accidentally update every matching `tech` or `personal` library.
 
 After applying tags, rebuild and publish the affected indexes:
 

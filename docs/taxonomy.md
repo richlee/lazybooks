@@ -31,8 +31,8 @@ matching Calibre databases, reviews title, author, existing tags, and comments,
 then writes reports:
 
 ```sh
-bookrefresh tech
-booktaxonomy tech
+bookrefresh onedrive.tech
+booktaxonomy onedrive.tech
 ```
 
 Output:
@@ -56,7 +56,7 @@ an authority.
 When the proposal is good enough:
 
 ```sh
-booktaxonomy tech --apply
+booktaxonomy onedrive.tech --apply
 ```
 
 `--apply` backs up each `metadata.db` before replacing book tags:
@@ -65,26 +65,70 @@ booktaxonomy tech --apply
 metadata.db.lazybooks-backup-YYYYMMDD-HHMMSS
 ```
 
+`--apply` requires explicit library names. That avoids accidentally applying
+changes across multiple providers when several sources contain libraries named
+`tech` or `personal`.
+
 After applying taxonomy tags, rebuild and publish the index:
 
 ```sh
-bookindex \
-  --root "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre" \
-  --index-dir "$HOME/book-indexes/tech" \
-  --title "Tech Books" \
-  --library-name Tech \
-  --calibre-metadata-only \
-  --local-prefix "$HOME/Library/CloudStorage/OneDrive-Personal/Library/tech/" \
-  --remote "personal-onedrive:Library/tech/"
-
-rclone copy "$HOME/book-indexes/tech" \
-  personal-onedrive:Library/book-indexes/tech \
-  --filter '+ index.html' \
-  --filter '+ manifest.json' \
-  --filter '- *'
-
-bookrefresh tech
+lazybooks sync
 ```
+
+## Taxonomy Config
+
+`booktaxonomy` ships with bundled defaults for the original `tech` and
+`personal` profiles. To customise the taxonomy without editing package code,
+create:
+
+```text
+~/.config/lazybooks/taxonomy.toml
+```
+
+or pass a file explicitly:
+
+```sh
+booktaxonomy --taxonomy-config examples/taxonomy.toml onedrive.tech
+```
+
+The config maps libraries to profiles, then maps profiles to ordered rules:
+
+```toml
+[defaults]
+min_recurring_tag_count = 2
+noisy_tags = ["", "book", "books", "pdf", "personal", "self", "tech", "unknown"]
+
+[libraries]
+"onedrive.tech" = "tech"
+"onedrive.personal" = "personal"
+
+[profiles.tech]
+manual_review_category = "tech-manual-review"
+
+[[profiles.tech.rules]]
+category = "software-architecture-design"
+keywords = ["architecture", "domain driven", "microservices", "event driven"]
+
+[[profiles.tech.rules]]
+category = "cloud-devops-platform"
+keywords = ["kubernetes", "docker", "terraform", "devops", "cloud"]
+```
+
+Use source-qualified library keys when multiple providers contain the same
+library name. Bare keys such as `tech = "tech"` are fine when the key is unique
+or when the same taxonomy profile should apply to every matching source.
+
+Rules are evaluated in order. The first matching rule wins. If no rule matches,
+`booktaxonomy` uses the profile's manual-review category.
+
+To inspect what will happen before generating or applying reports:
+
+```sh
+booktaxonomy --explain onedrive.tech
+```
+
+`--explain` prints the selected profile, rule count, recurring tag threshold,
+top proposed categories, top recurring tags, and a compact rule summary.
 
 ## Non-Calibre Libraries
 

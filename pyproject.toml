@@ -52,6 +52,9 @@ script-files = [
 ]
 
 [tool.setuptools.package-data]
+"lazybooks" = [
+  "default_taxonomy.toml",
+]
 "lazybooks.demo" = [
   "config.toml",
   "book-indexes/*/manifest.json",
