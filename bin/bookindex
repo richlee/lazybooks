@@ -8,10 +8,13 @@ import json
 import os
 import re
 import sqlite3
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+from lazybooks.config import DEFAULT_CONFIG, LibraryConfig, load_libraries
 
 
 @dataclass
@@ -224,30 +227,122 @@ def write_manifest(index_dir: Path, books: list[Book], local_prefix: str | None 
     (index_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
 
+def build_index(
+    *,
+    root: Path,
+    index_dir: Path,
+    title: str,
+    library_name: str,
+    category_depth: int,
+    calibre_metadata_only: bool,
+    local_prefix: str | None,
+    remote: str | None,
+) -> dict[str, object]:
+    books = scan_books(root, library_name, max(1, category_depth), calibre_metadata_only)
+    write_index(index_dir, title, books)
+    if local_prefix:
+        local_prefix = str(Path(local_prefix).expanduser())
+        if not local_prefix.endswith(os.sep):
+            local_prefix += os.sep
+    if remote and not remote.endswith(("/", ":")):
+        remote += "/"
+    write_manifest(index_dir, books, local_prefix, remote)
+    return {"books": len(books), "index": str(index_dir / "index.html"), "manifest": str(index_dir / "manifest.json")}
+
+
+def build_configured_library(library: LibraryConfig) -> dict[str, object]:
+    if library.root is None:
+        raise ValueError(
+            f"{library.source_key}.{library.key} has no root configured. "
+            f"Add root = \"...\" under [sources.{library.source_key}.libraries.{library.key}]."
+        )
+    return {
+        "source": library.source_key,
+        "library": library.key,
+        **build_index(
+            root=library.root,
+            index_dir=library.index_dir,
+            title=library.title or f"{library.name} Books",
+            library_name=library.library_name or library.name,
+            category_depth=library.category_depth,
+            calibre_metadata_only=library.calibre_metadata_only,
+            local_prefix=library.local_prefix,
+            remote=library.remote,
+        ),
+    }
+
+
+def select_configured_libraries(libraries: list[LibraryConfig], key: str | None) -> list[LibraryConfig]:
+    if not key:
+        return libraries
+    return [
+        library
+        for library in libraries
+        if library.key == key or f"{library.source_key}.{library.key}" == key or f"{library.source_key}:{library.key}" == key
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build a lazybooks index from a folder of PDFs.")
-    parser.add_argument("--root", required=True, type=Path, help="PDF library root.")
-    parser.add_argument("--index-dir", required=True, type=Path, help="Output directory.")
-    parser.add_argument("--title", required=True, help="Index title.")
-    parser.add_argument("--library-name", required=True, help="Source label for non-Calibre PDFs.")
+    parser.add_argument("--all", action="store_true", help="Build indexes for every configured library with a root.")
+    parser.add_argument("--config", help="Path to config.toml. Defaults to LAZYBOOKS_CONFIG or ~/.config/lazybooks/config.toml.")
+    parser.add_argument("--library", help="Configured library key to build, e.g. tech or onedrive.tech.")
+    parser.add_argument("--root", type=Path, help="PDF library root.")
+    parser.add_argument("--index-dir", type=Path, help="Output directory.")
+    parser.add_argument("--title", help="Index title.")
+    parser.add_argument("--library-name", help="Source label for non-Calibre PDFs.")
     parser.add_argument("--category-depth", type=int, default=1, help="Folder path depth to use for non-Calibre categories.")
     parser.add_argument("--calibre-metadata-only", action="store_true", help="Only index PDFs referenced by Calibre metadata.db files.")
     parser.add_argument("--remote", help="Optional rclone remote prefix for generated remote_path values, e.g. personal-onedrive:Library/tech/.")
     parser.add_argument("--local-prefix", help="Optional local path prefix to replace with --remote when writing remote_path values.")
     args = parser.parse_args()
 
-    books = scan_books(args.root, args.library_name, max(1, args.category_depth), args.calibre_metadata_only)
-    write_index(args.index_dir, args.title, books)
-    local_prefix = None
-    if args.local_prefix:
-        local_prefix = str(Path(args.local_prefix).expanduser())
-        if not local_prefix.endswith(os.sep):
-            local_prefix += os.sep
-    remote = args.remote
-    if remote and not remote.endswith("/"):
-        remote += "/"
-    write_manifest(args.index_dir, books, local_prefix, remote)
-    print(json.dumps({"books": len(books), "index": str(args.index_dir / "index.html"), "manifest": str(args.index_dir / "manifest.json")}, indent=2))
+    if args.all or args.library:
+        libraries, _default_index = load_libraries(Path(args.config).expanduser() if args.config else DEFAULT_CONFIG)
+        selected = select_configured_libraries(libraries, args.library)
+        if not selected:
+            print(f"Unknown configured library: {args.library}", file=sys.stderr)
+            print(
+                "Available libraries: "
+                + ", ".join(f"{library.source_key}.{library.key}" for library in libraries),
+                file=sys.stderr,
+            )
+            return 2
+        results = []
+        failures = 0
+        for library in selected:
+            try:
+                results.append(build_configured_library(library))
+            except Exception as exc:
+                failures += 1
+                print(f"Index failed for {library.source_key}.{library.key}: {exc}", file=sys.stderr)
+        print(json.dumps({"indexed": results, "failures": failures}, indent=2))
+        return 1 if failures else 0
+
+    missing = [
+        option
+        for option, value in {
+            "--root": args.root,
+            "--index-dir": args.index_dir,
+            "--title": args.title,
+            "--library-name": args.library_name,
+        }.items()
+        if value is None
+    ]
+    if missing:
+        parser.error("the following arguments are required unless --all or --library is used: " + ", ".join(missing))
+
+    result = build_index(
+        root=args.root,
+        index_dir=args.index_dir,
+        title=args.title,
+        library_name=args.library_name,
+        category_depth=args.category_depth,
+        calibre_metadata_only=args.calibre_metadata_only,
+        local_prefix=args.local_prefix,
+        remote=args.remote,
+    )
+    print(json.dumps(result, indent=2))
     return 0
 
 

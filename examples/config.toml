@@ -9,16 +9,28 @@ local_prefix = "~/Library/CloudStorage/OneDrive-Personal/"
 
 [sources.onedrive.libraries.assurance]
 name = "Assurance"
+root = "~/Library/CloudStorage/OneDrive-Personal/Library/assurance/assurance-library-calibre"
+title = "Assurance Books"
+library_name = "Assurance"
+calibre_metadata_only = true
 index_dir = "~/book-indexes/onedrive/assurance"
 index_remote = "personal-onedrive:Library/book-indexes/assurance"
 
 [sources.onedrive.libraries.tech]
 name = "Tech"
+root = "~/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre"
+title = "Tech Books"
+library_name = "Tech"
+calibre_metadata_only = true
 index_dir = "~/book-indexes/onedrive/tech"
 index_remote = "personal-onedrive:Library/book-indexes/tech"
 
 [sources.onedrive.libraries.personal]
 name = "Personal"
+root = "~/Library/CloudStorage/OneDrive-Personal/Library/personal/personal-library-calibre"
+title = "Personal Books"
+library_name = "Personal"
+calibre_metadata_only = true
 index_dir = "~/book-indexes/onedrive/personal"
 index_remote = "personal-onedrive:Library/book-indexes/personal"
 
@@ -29,5 +41,8 @@ local_prefix = "~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/"
 
 [sources.google.libraries.assurance]
 name = "Assurance"
+root = "~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/Library/assurance"
+title = "Google Assurance Books"
+library_name = "Assurance"
 index_dir = "~/book-indexes/google/assurance"
 index_remote = "google-drive:Library/book-indexes/assurance"

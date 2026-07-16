@@ -22,6 +22,11 @@ class LibraryConfig:
     local_prefix: str
     source_key: str = "default"
     source_name: str = "Default"
+    root: Path | None = None
+    title: str | None = None
+    library_name: str | None = None
+    category_depth: int = 1
+    calibre_metadata_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -93,12 +98,14 @@ def parse_library(
 ) -> LibraryConfig:
     index_dir = expand_path(str(values.get("index_dir", f"~/book-indexes/{key}")))
     manifest = expand_path(str(values.get("manifest", str(index_dir / "manifest.json"))))
+    name = str(values.get("name", str(key).replace("-", " ").title()))
     library_remote = os.environ.get("LAZYBOOKS_REMOTE", str(values.get("remote", effective_remote)))
     configured_library_remote = str(values.get("remote", configured_remote))
     index_remote = rewrite_remote(str(values.get("index_remote", "")), configured_library_remote, library_remote)
+    root_value = values.get("root")
     return LibraryConfig(
         key=str(key),
-        name=str(values.get("name", str(key).replace("-", " ").title())),
+        name=name,
         manifest=manifest,
         index_dir=index_dir,
         index_remote=index_remote,
@@ -107,6 +114,11 @@ def parse_library(
         local_prefix=local_prefix(str(values.get("local_prefix", default_prefix))),
         source_key=source_key,
         source_name=source_name,
+        root=expand_path(str(root_value)) if root_value else None,
+        title=str(values.get("title", f"{name} Books")),
+        library_name=str(values.get("library_name", name)),
+        category_depth=int(values.get("category_depth", 1)),
+        calibre_metadata_only=bool(values.get("calibre_metadata_only", False)),
     )
 
 

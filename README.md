@@ -250,16 +250,28 @@ local_prefix = "~/Library/CloudStorage/OneDrive-Personal/"
 
 [sources.onedrive.libraries.assurance]
 name = "Assurance"
+root = "~/Library/CloudStorage/OneDrive-Personal/Library/assurance/assurance-library-calibre"
+title = "Assurance Books"
+library_name = "Assurance"
+calibre_metadata_only = true
 index_dir = "~/book-indexes/onedrive/assurance"
 index_remote = "personal-onedrive:Library/book-indexes/assurance"
 
 [sources.onedrive.libraries.tech]
 name = "Tech"
+root = "~/Library/CloudStorage/OneDrive-Personal/Library/tech/tech-library-calibre"
+title = "Tech Books"
+library_name = "Tech"
+calibre_metadata_only = true
 index_dir = "~/book-indexes/onedrive/tech"
 index_remote = "personal-onedrive:Library/book-indexes/tech"
 
 [sources.onedrive.libraries.personal]
 name = "Personal"
+root = "~/Library/CloudStorage/OneDrive-Personal/Library/personal/personal-library-calibre"
+title = "Personal Books"
+library_name = "Personal"
+calibre_metadata_only = true
 index_dir = "~/book-indexes/onedrive/personal"
 index_remote = "personal-onedrive:Library/book-indexes/personal"
 
@@ -270,6 +282,9 @@ local_prefix = "~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/"
 
 [sources.google.libraries.assurance]
 name = "Assurance"
+root = "~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/Library/assurance"
+title = "Google Assurance Books"
+library_name = "Assurance"
 index_dir = "~/book-indexes/google/assurance"
 index_remote = "google-drive:Library/book-indexes/assurance"
 ```
@@ -281,6 +296,10 @@ Important fields:
 - `cache`: where downloaded PDFs are stored locally.
 - `sources.<key>.remote`: the `rclone` remote used to fetch PDFs for that source.
 - `sources.<key>.local_prefix`: the local filesystem prefix stored in generated manifests for that source.
+- `root`: the local folder `bookindex` scans to generate `index.html` and `manifest.json`.
+- `title`: the browser title used in `index.html`.
+- `library_name`: the source label used for non-Calibre PDFs.
+- `calibre_metadata_only`: only index PDFs recorded in Calibre metadata when `true`.
 - `index_dir`: where each library's small local `index.html` and `manifest.json` live.
 - `index_remote`: where those index files live in the configured cloud provider.
 
@@ -372,6 +391,18 @@ bookindex \
 
 For non-Calibre folders, categories come from folder names. `--category-depth 2`
 uses the first two path components under the root.
+
+If each configured library has a `root`, build all configured indexes with:
+
+```sh
+bookindex --all
+```
+
+Build one configured library with:
+
+```sh
+bookindex --library onedrive.tech
+```
 
 When `--local-prefix` and `--remote` are supplied, the manifest includes
 `remote_path` for each matching book. That is preferred for cross-platform use

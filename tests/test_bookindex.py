@@ -42,3 +42,46 @@ def test_bookindex_writes_remote_path_for_matching_prefix(tmp_path: Path) -> Non
     manifest = json.loads((index_dir / "manifest.json").read_text())
     assert json.loads(result.stdout)["books"] == 1
     assert manifest["books"][0]["remote_path"] == "google-drive:Library/test/architecture/Secure by Design - Dan Bergh Johnsson.pdf"
+
+
+def test_bookindex_all_uses_configured_library_roots(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    section = library / "architecture"
+    section.mkdir(parents=True)
+    pdf = section / "Reliable APIs - Ada Example.pdf"
+    pdf.write_text("placeholder")
+    index_dir = tmp_path / "index"
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f"""
+default_source = "google"
+default_library = "reference"
+
+[sources.google]
+name = "Google Drive"
+remote = "google-drive:"
+local_prefix = "{library}{os.sep}"
+
+[sources.google.libraries.reference]
+name = "Reference"
+root = "{library}"
+index_dir = "{index_dir}"
+index_remote = "google-drive:Library/book-indexes/reference"
+title = "Reference Books"
+library_name = "Reference"
+category_depth = 1
+"""
+    )
+
+    result = run(
+        [sys.executable, "bin/bookindex", "--config", str(config), "--all"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    output = json.loads(result.stdout)
+    manifest = json.loads((index_dir / "manifest.json").read_text())
+    assert output["indexed"][0]["library"] == "reference"
+    assert output["indexed"][0]["books"] == 1
+    assert manifest["books"][0]["remote_path"] == "google-drive:architecture/Reliable APIs - Ada Example.pdf"
