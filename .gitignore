@@ -3,6 +3,8 @@ __pycache__/
 .DS_Store
 book-cache/
 book-indexes/
+!examples/demo/book-indexes/
+!examples/demo/book-indexes/**
 reports/
 .venv/
 *.egg-info/
