@@ -183,7 +183,8 @@ class LazyBooksApp(App[None]):
         text-style: bold;
     }
 
-    .selected_category {
+    .selected_category,
+    .selected_book {
         background: #444444;
         color: #ffaf00;
     }
@@ -263,16 +264,19 @@ class LazyBooksApp(App[None]):
     def focus_books(self) -> None:
         self.focus_pane = "books"
         self.books_view().focus()
+        self.sync_book_selection()
 
     def select_category(self, index: int) -> None:
         self.state.category_index = index
         self.state.book_index = 0
         self.sync_category_selection()
         self.update_books()
+        self.call_later(self.sync_book_selection)
         self.update_detail()
 
     def select_book(self, index: int) -> None:
         self.state.book_index = index
+        self.sync_book_selection()
         self.update_detail()
 
     def cache_marker(self, book: Book) -> str:
@@ -375,12 +379,24 @@ class LazyBooksApp(App[None]):
         view.clear()
         books = self.visible()
         self.state.book_index = min(max(0, self.state.book_index), max(0, len(books) - 1))
-        for book in books:
+        for index, book in enumerate(books):
             marker = self.cache_marker(book)
             author = f" - {book.author}" if book.author and book.author != UNKNOWN_AUTHOR else ""
-            view.append(ListItem(Label(f"{marker}  {book.title}[dim]{author}[/]")))
+            item = ListItem(Label(f"{marker}  {book.title}[dim]{author}[/]"))
+            if index == self.state.book_index:
+                item.add_class("selected_book")
+            view.append(item)
         if books:
             view.index = self.state.book_index
+            self.sync_book_selection()
+
+    def sync_book_selection(self) -> None:
+        view = self.books_view()
+        for index, item in enumerate(view.children):
+            if index == self.state.book_index:
+                item.add_class("selected_book")
+            else:
+                item.remove_class("selected_book")
 
     def update_detail(self) -> None:
         books = self.visible()

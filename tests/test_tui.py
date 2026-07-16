@@ -61,11 +61,37 @@ def test_category_change_selects_first_visible_book(library) -> None:
             assert categories.has_focus
             assert app.state.book_index == 0
             assert books.index == 0
+            assert books.children[0].has_class("selected_book")
 
             await pilot.press("enter")
             await pilot.pause(0.2)
             assert books.has_focus
             assert app.state.book_index == 0
+            assert books.children[0].has_class("selected_book")
+
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert categories.has_focus
+            await pilot.press("up")
+            await pilot.pause(0.2)
+            assert app.state.category_index == 0
+            await pilot.press("enter")
+            await pilot.pause(0.2)
+            assert books.has_focus
+
+            await pilot.press("down")
+            await pilot.pause(0.2)
+            assert app.state.book_index == 1
+            assert not books.children[0].has_class("selected_book")
+            assert books.children[1].has_class("selected_book")
+
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert categories.has_focus
+            await pilot.press("tab")
+            await pilot.pause(0.1)
+            assert books.has_focus
+            assert books.children[1].has_class("selected_book")
 
     run_async(scenario())
 
