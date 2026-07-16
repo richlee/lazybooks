@@ -13,17 +13,21 @@ from textual.screen import ModalScreen
 from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Static
 
 from lazybooks.books import Book, build_categories, label_category, load_books, visible_books
-from lazybooks.config import LibraryConfig, demo_root, load_libraries
+from lazybooks.config import LibraryConfig, SourceConfig, demo_root, load_sources
 from lazybooks.files import cached_path, fetch_book, open_file
 from lazybooks.refresh import refresh_library
 from lazybooks.version import version_info, version_label
 
 
-HELP_TEXT = "Pane:Tab | Search:/ | Clear Search:c | Open:Enter | Info:→ | Del:d | Lib:1-9 | About:? | Quit:q"
+HELP_TEXT = (
+    "Pane:Tab | Search:/ | Clear Search:c | Open:Enter | Info:→ | "
+    "Del:d | Source:shown key | Lib:1-9 | About:? | Quit:q"
+)
 ALL_CATEGORY = "All"
 MESSAGE_TIMEOUT_SECONDS = 3.0
 MODAL_WRAP_WIDTH = 72
 MAX_LIBRARY_SHORTCUTS = 9
+SOURCE_SHORTCUTS = tuple(ch for ch in "abcdefghijklmnopqrstuvwxyz" if ch not in {"c", "d", "l", "q", "r"})
 UNKNOWN_AUTHOR = "Unknown"
 
 
@@ -127,6 +131,7 @@ class LazyBooksApp(App[None]):
         height: 1fr;
     }
 
+    #sources,
     #tabs {
         height: 1;
         color: #a8adb7;
@@ -224,15 +229,48 @@ class LazyBooksApp(App[None]):
         Binding("?", "about", "About", show=False),
     ]
 
-    def __init__(self, libraries: list[LibraryConfig], default_index: int) -> None:
+    def __init__(
+        self,
+        libraries_or_sources: list[LibraryConfig] | list[SourceConfig],
+        default_index: int,
+        default_library_index: int | None = None,
+    ) -> None:
         super().__init__()
-        self.libraries = libraries
-        self.library_index = default_index
+        self.sources, self.source_index, self.library_index = self.normalise_sources(
+            libraries_or_sources, default_index, default_library_index
+        )
+        self.library_index_by_source = {self.source.key: self.library_index}
         self.state_by_key: dict[str, LibraryState] = {}
         self.focus_pane = "books"
         self.message = HELP_TEXT
         self.message_id = 0
         self.category_enter_pending = False
+
+    @staticmethod
+    def normalise_sources(
+        libraries_or_sources: list[LibraryConfig] | list[SourceConfig],
+        default_index: int,
+        default_library_index: int | None,
+    ) -> tuple[list[SourceConfig], int, int]:
+        if libraries_or_sources and isinstance(libraries_or_sources[0], SourceConfig):
+            sources = libraries_or_sources  # type: ignore[assignment]
+            source_index = min(max(0, default_index), max(0, len(sources) - 1))
+            library_count = len(sources[source_index].libraries)
+            library_index = min(max(0, default_library_index or 0), max(0, library_count - 1))
+            return sources, source_index, library_index
+
+        libraries = libraries_or_sources  # type: ignore[assignment]
+        source = SourceConfig(key="default", name="Default", libraries=libraries)
+        library_index = min(max(0, default_index), max(0, len(libraries) - 1))
+        return [source], 0, library_index
+
+    @property
+    def source(self) -> SourceConfig:
+        return self.sources[self.source_index]
+
+    @property
+    def libraries(self) -> list[LibraryConfig]:
+        return self.source.libraries
 
     @property
     def library(self) -> LibraryConfig:
@@ -240,7 +278,7 @@ class LazyBooksApp(App[None]):
 
     @property
     def state(self) -> LibraryState:
-        key = self.library.key
+        key = f"{self.library.source_key}:{self.library.key}"
         if key not in self.state_by_key:
             self.state_by_key[key] = self.load_state(self.library)
         return self.state_by_key[key]
@@ -286,6 +324,7 @@ class LazyBooksApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="root"):
+            yield Static(id="sources")
             yield Static(id="tabs")
             with Vertical(id="search"):
                 yield Input(placeholder="Search", id="search_input")
@@ -313,12 +352,27 @@ class LazyBooksApp(App[None]):
         return visible_books(self.state.books, category, self.state.query)
 
     def refresh_all_views(self) -> None:
+        self.update_sources()
         self.update_tabs()
         self.update_search()
         self.update_categories()
         self.update_books()
         self.update_detail()
         self.update_status()
+
+    def source_shortcuts(self) -> dict[str, int]:
+        return {
+            shortcut: index
+            for index, shortcut in enumerate(SOURCE_SHORTCUTS[: len(self.sources)])
+        }
+
+    def update_sources(self) -> None:
+        labels = []
+        for index, source in enumerate(self.sources[: len(SOURCE_SHORTCUTS)]):
+            shortcut = SOURCE_SHORTCUTS[index]
+            label = f"[{shortcut}] {source.name}"
+            labels.append(f"[reverse]{label}[/]" if index == self.source_index else label)
+        self.query_one("#sources", Static).update(f"Sources: {'  '.join(labels)}")
 
     def update_tabs(self) -> None:
         labels = []
@@ -431,12 +485,30 @@ class LazyBooksApp(App[None]):
         if index < 0 or index >= len(self.libraries):
             return
         self.library_index = index
+        self.library_index_by_source[self.source.key] = index
         self.refresh_all_views()
         self.focus_books()
         self.set_message(f"Switched to {self.library.name}")
 
+    def switch_source(self, index: int) -> None:
+        if index < 0 or index >= len(self.sources):
+            return
+        self.library_index_by_source[self.source.key] = self.library_index
+        self.source_index = index
+        previous_index = self.library_index_by_source.get(self.source.key, 0)
+        self.library_index = min(max(0, previous_index), max(0, len(self.libraries) - 1))
+        self.library_index_by_source[self.source.key] = self.library_index
+        self.refresh_all_views()
+        self.focus_books()
+        self.set_message(f"Switched to {self.source.name}")
+
     def on_key(self, event) -> None:
         if self.search_input().has_focus:
+            return
+        shortcuts = self.source_shortcuts()
+        if event.key in shortcuts:
+            self.switch_source(shortcuts[event.key])
+            event.stop()
             return
         if event.key == "enter" and self.books_view().has_focus:
             self.action_open_selected()
@@ -582,7 +654,7 @@ class LazyBooksApp(App[None]):
         self.call_from_thread(self.set_message, f"Refreshing {self.library.name}...")
         try:
             refresh_library(self.library)
-            self.state_by_key[self.library.key] = self.load_state(self.library)
+            self.state_by_key[f"{self.library.source_key}:{self.library.key}"] = self.load_state(self.library)
             self.call_from_thread(self.refresh_all_views)
             self.call_from_thread(self.set_message, "Index refreshed")
         except Exception as exc:
@@ -644,8 +716,8 @@ def main() -> int:
         return 0
 
     config_path = demo_root() / "config.toml" if args.demo else args.config
-    libraries, default_index = load_libraries(config_path)
-    LazyBooksApp(libraries, default_index).run()
+    sources, default_source_index, default_library_index = load_sources(config_path)
+    LazyBooksApp(sources, default_source_index, default_library_index).run()
     return 0
 
 

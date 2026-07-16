@@ -1,19 +1,33 @@
-default = "assurance"
+default_source = "onedrive"
+default_library = "assurance"
 cache = "~/book-cache"
+
+[sources.onedrive]
+name = "OneDrive"
 remote = "personal-onedrive:"
 local_prefix = "~/Library/CloudStorage/OneDrive-Personal/"
 
-[libraries.assurance]
+[sources.onedrive.libraries.assurance]
 name = "Assurance"
-index_dir = "~/book-indexes/assurance"
+index_dir = "~/book-indexes/onedrive/assurance"
 index_remote = "personal-onedrive:Library/book-indexes/assurance"
 
-[libraries.tech]
+[sources.onedrive.libraries.tech]
 name = "Tech"
-index_dir = "~/book-indexes/tech"
+index_dir = "~/book-indexes/onedrive/tech"
 index_remote = "personal-onedrive:Library/book-indexes/tech"
 
-[libraries.personal]
+[sources.onedrive.libraries.personal]
 name = "Personal"
-index_dir = "~/book-indexes/personal"
+index_dir = "~/book-indexes/onedrive/personal"
 index_remote = "personal-onedrive:Library/book-indexes/personal"
+
+[sources.google]
+name = "Google Drive"
+remote = "google-drive:"
+local_prefix = "~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/"
+
+[sources.google.libraries.assurance]
+name = "Assurance"
+index_dir = "~/book-indexes/google/assurance"
+index_remote = "google-drive:Library/book-indexes/assurance"

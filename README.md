@@ -234,38 +234,59 @@ The examples below assume a remote named `personal-onedrive:`. If yours is named
 - where the small local index files should live
 - where those index files are stored in cloud storage
 
-Create `~/.config/lazybooks/config.toml`:
+Create `~/.config/lazybooks/config.toml`. A source is normally one `rclone`
+remote, such as OneDrive or Google Drive. Each source can expose one or more
+libraries:
 
 ```toml
-default = "assurance"
+default_source = "onedrive"
+default_library = "assurance"
 cache = "~/book-cache"
+
+[sources.onedrive]
+name = "OneDrive"
 remote = "personal-onedrive:"
 local_prefix = "~/Library/CloudStorage/OneDrive-Personal/"
 
-[libraries.assurance]
+[sources.onedrive.libraries.assurance]
 name = "Assurance"
-index_dir = "~/book-indexes/assurance"
+index_dir = "~/book-indexes/onedrive/assurance"
 index_remote = "personal-onedrive:Library/book-indexes/assurance"
 
-[libraries.tech]
+[sources.onedrive.libraries.tech]
 name = "Tech"
-index_dir = "~/book-indexes/tech"
+index_dir = "~/book-indexes/onedrive/tech"
 index_remote = "personal-onedrive:Library/book-indexes/tech"
 
-[libraries.personal]
+[sources.onedrive.libraries.personal]
 name = "Personal"
-index_dir = "~/book-indexes/personal"
+index_dir = "~/book-indexes/onedrive/personal"
 index_remote = "personal-onedrive:Library/book-indexes/personal"
+
+[sources.google]
+name = "Google Drive"
+remote = "google-drive:"
+local_prefix = "~/Library/CloudStorage/GoogleDrive-you@example.com/My Drive/"
+
+[sources.google.libraries.assurance]
+name = "Assurance"
+index_dir = "~/book-indexes/google/assurance"
+index_remote = "google-drive:Library/book-indexes/assurance"
 ```
 
 Important fields:
 
-- `default`: the library opened by `bookrefresh` or `lazybooks` when no library is specified.
+- `default_source`: the cloud/source opened first by `lazybooks`.
+- `default_library`: the library opened first within the default source.
 - `cache`: where downloaded PDFs are stored locally.
-- `remote`: the `rclone` remote used to fetch PDFs.
-- `local_prefix`: the local filesystem prefix stored in generated manifests.
+- `sources.<key>.remote`: the `rclone` remote used to fetch PDFs for that source.
+- `sources.<key>.local_prefix`: the local filesystem prefix stored in generated manifests for that source.
 - `index_dir`: where each library's small local `index.html` and `manifest.json` live.
-- `index_remote`: where those index files live in OneDrive.
+- `index_remote`: where those index files live in the configured cloud provider.
+
+The TUI shows configured sources on the first row and libraries for the selected
+source on the second row. Press the displayed source letter, such as `a` or `b`,
+to switch provider. Press `1` to `9` to switch library within the active source.
 
 `local_prefix` matters because manifests store local-looking paths such as:
 
@@ -282,7 +303,8 @@ personal-onedrive:Library/tech/...
 An example config is included at `examples/config.toml`.
 
 Environment variables such as `LAZYBOOKS_REMOTE` can override some config values,
-but a config file is easier for multi-library use.
+but a config file is easier for multi-library and multi-provider use. Older flat
+configs with a top-level `[libraries]` table are still supported.
 
 Use a different config file for testing or demos:
 

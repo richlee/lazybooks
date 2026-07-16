@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 import lazybooks.tui.textual_app as textual_app
+from lazybooks.config import LibraryConfig, SourceConfig
 from lazybooks.tui.textual_app import LazyBooksApp, MessageModal
 from textual.widgets import Input, ListView
 
@@ -40,6 +41,70 @@ def test_search_is_not_in_tab_sequence(library) -> None:
             assert search.display is True
             assert search.can_focus is False
             assert books.has_focus
+
+    run_async(scenario())
+
+
+def test_source_switch_changes_available_libraries(tmp_path: Path, library) -> None:
+    google_manifest = tmp_path / "google-manifest.json"
+    google_manifest.write_text(
+        """
+{"books": [
+  {
+    "title": "Gamma Google",
+    "author": "Gina Example",
+    "category": "personal-growth",
+    "source": "Google Drive",
+    "canonical_path": "/google/Gamma Google.pdf"
+  }
+]}
+"""
+    )
+    google_library = LibraryConfig(
+        key="personal",
+        name="Personal",
+        manifest=google_manifest,
+        index_dir=tmp_path / "google-index",
+        index_remote="google:Library/book-indexes/personal",
+        cache=tmp_path / "google-cache",
+        remote="google:",
+        local_prefix="/google/",
+        source_key="google",
+        source_name="Google Drive",
+    )
+    onedrive_library = LibraryConfig(
+        key=library.key,
+        name=library.name,
+        manifest=library.manifest,
+        index_dir=library.index_dir,
+        index_remote=library.index_remote,
+        cache=library.cache,
+        remote=library.remote,
+        local_prefix=library.local_prefix,
+        source_key="onedrive",
+        source_name="OneDrive",
+    )
+
+    async def scenario() -> None:
+        app = LazyBooksApp(
+            [
+                SourceConfig("onedrive", "OneDrive", [onedrive_library]),
+                SourceConfig("google", "Google Drive", [google_library]),
+            ],
+            0,
+            0,
+        )
+        async with app.run_test() as pilot:
+            await pilot.pause(0.2)
+            assert app.source.key == "onedrive"
+            assert app.library.key == "test"
+            assert app.visible()[0].title == "Alpha Architecture"
+
+            await pilot.press("b")
+            await pilot.pause(0.2)
+            assert app.source.key == "google"
+            assert app.library.key == "personal"
+            assert app.visible()[0].title == "Gamma Google"
 
     run_async(scenario())
 
